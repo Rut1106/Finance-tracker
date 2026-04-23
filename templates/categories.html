@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Manage Categories</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <div class="container">
+
+      <div class="header">
+        <h1>Manage Categories</h1>
+        <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+      </div>
+
+      <div class="insights-grid">
+        <div class="card">
+          <h2>Expense Categories</h2>
+          {% if expense_cats %}
+            <ul class="cat-list">
+              {% for c in expense_cats %}
+                <li class="cat-item">
+                  <form method="post" action="/categories/rename/{{ c.id }}" class="cat-form">
+                    <input type="text" name="new_name" value="{{ c.name }}" class="cat-input">
+                    <button type="submit" class="btn btn-sm btn-secondary">Rename</button>
+                  </form>
+                  <a href="/categories/delete/{{ c.id }}" class="action-link delete">Delete</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="empty-state">No expense categories yet.</div>
+          {% endif %}
+          <form method="post" action="/categories" class="cat-add">
+            <input type="hidden" name="kind" value="expense">
+            <input type="text" name="name" placeholder="New category name" required>
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Income Categories</h2>
+          {% if income_cats %}
+            <ul class="cat-list">
+              {% for c in income_cats %}
+                <li class="cat-item">
+                  <form method="post" action="/categories/rename/{{ c.id }}" class="cat-form">
+                    <input type="text" name="new_name" value="{{ c.name }}" class="cat-input">
+                    <button type="submit" class="btn btn-sm btn-secondary">Rename</button>
+                  </form>
+                  <a href="/categories/delete/{{ c.id }}" class="action-link delete">Delete</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="empty-state">No income categories yet.</div>
+          {% endif %}
+          <form method="post" action="/categories" class="cat-add">
+            <input type="hidden" name="kind" value="income">
+            <input type="text" name="name" placeholder="New category name" required>
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="hint">
+          Categories currently in use by any expense, income, or split cannot be deleted.
+          Renaming a category automatically updates all records using it.
+        </p>
+      </div>
+
+    </div>
+  </body>
+</html>

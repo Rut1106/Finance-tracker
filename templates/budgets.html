@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Budgets</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <div class="container">
+
+      <div class="header">
+        <h1>Monthly Budgets</h1>
+        <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+      </div>
+
+      <div class="card">
+        <h2>Set or Update a Budget</h2>
+        <form method="post" action="/budgets">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="budget-category">Category</label>
+              <select id="budget-category" name="category" required>
+                {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="budget-amount">Monthly Limit ($)</label>
+              <input type="number" id="budget-amount" name="amount" min="0" step="0.01" required>
+            </div>
+            <div class="form-group" style="justify-content: flex-end;">
+              <button type="submit" class="btn btn-primary">Save Budget</button>
+            </div>
+          </div>
+        </form>
+        <p class="hint" style="margin-top: 8px;">
+          Setting a budget for an existing category will overwrite the old amount.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>This Month's Progress</h2>
+        {% if budgets %}
+          <div class="budget-list">
+            {% for b in budgets %}
+              <div class="budget-row">
+                <div class="budget-row-top">
+                  <span class="budget-cat">{{ b.category }}</span>
+                  <span class="budget-amt">
+                    ${{ "%.2f"|format(b.spent) }} / ${{ "%.2f"|format(b.amount) }}
+                    {% if b.status == "red" %}
+                      <span class="budget-over">Over by ${{ "%.2f"|format(-b.remaining) }}</span>
+                    {% else %}
+                      <span class="hint">${{ "%.2f"|format(b.remaining) }} left</span>
+                    {% endif %}
+                  </span>
+                </div>
+                <div class="budget-bar">
+                  <div class="budget-bar-fill budget-{{ b.status }}" style="width: {{ b.pct }}%"></div>
+                </div>
+                <div class="budget-row-bottom">
+                  <span class="budget-pct">{{ "%.0f"|format(b.pct_raw) }}% used</span>
+                  <a href="/budgets/delete/{{ b.id }}" class="action-link delete">Remove</a>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">No budgets set. Add one above to start tracking.</div>
+        {% endif %}
+      </div>
+
+    </div>
+  </body>
+</html>
