@@ -1,4 +1,4 @@
-<!doctype html>
+<!-- <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -32,4 +32,49 @@
 
     </div>
   </body>
+</html> -->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Accounts — Finance Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-brand">Finance Tracker</div>
+  <nav class="topbar-nav">
+    <a href="/budgets">Budgets</a>
+    <a href="/categories">Categories</a>
+    <a href="/insights">Insights</a>
+    <a href="/">Dashboard</a>
+  </nav>
+</header>
+
+<div class="page-wrap">
+  <div class="page-header">
+    <div class="page-title">Account Opening Balances</div>
+  </div>
+
+  <div class="standalone-card">
+    <h2>Set Opening Balances</h2>
+    <form method="post" action="/accounts">
+      <div class="form-grid-2">
+        {% for name, balance in accounts.items() %}
+          <div class="standalone-field">
+            <label>{{ name }}</label>
+            <input type="number" name="{{ name }}" min="0" step="0.01" value="{{ balance }}" required>
+          </div>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn-save" style="margin-top:16px;">Save Balances</button>
+    </form>
+    <p style="font-size:11px; color:var(--muted); margin-top:12px;">
+      Account 3 = Income (salary deposits here) · Account 1 = Spending · Account 4 = Splitwise ledger.<br>
+      Set Account 4 opening balance to your current Splitwise balance to keep them in sync.
+    </p>
+  </div>
+</div>
+</body>
 </html>

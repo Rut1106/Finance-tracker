@@ -1,30 +1,4 @@
-<!-- <!doctype html>
-<html>
-  <head>
-    <title>Expense Tracker - Edit Expense</title>
-  </head>
-  <body>
-    <h1>Edit Expense</h1>
-    <form method="post">
-      <label for="date">Date:</label>
-      <input type="date" id="date" name="date" value="{{ expense.date }}" required><br>
-      <label for="description">Description:</label>
-      <input type="text" id="description" name="description" value="{{ expense.description }}" required><br>
-      <label for="amount">Amount:</label>
-      <input type="number" id="amount" name="amount" min="0" step="0.01" value="{{ expense.amount }}" required><br>
-      <label for="category">Category:</label>
-      <select id="category" name="category" required>
-        {% for category in categories %}
-          <option value="{{ category }}" {% if category == expense.category %}selected{% endif %}>{{ category }}</option>
-        {% endfor %}
-      </select><br>
-      <input type="submit" value="Save">
-    </form>
-    <a href="/">Cancel</a>
-  </body>
-</html> -->
-
-
+<!-- 
 <!doctype html>
 <html lang="en">
   <head>
@@ -76,4 +50,61 @@
 
     </div>
   </body>
+</html> -->
+
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Edit Expense — Finance Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-brand">Finance Tracker</div>
+  <nav class="topbar-nav">
+    <a href="/">Dashboard</a>
+  </nav>
+</header>
+
+<div class="page-wrap" style="max-width:500px;">
+  <div class="page-header">
+    <div class="page-title">Edit Expense</div>
+    <a href="/" class="btn-back">← Back</a>
+  </div>
+
+  <div class="standalone-card">
+    <h2>Update Details</h2>
+    <form method="post">
+      <div class="form-grid-2">
+        <div class="standalone-field">
+          <label>Date</label>
+          <input type="date" name="date" value="{{ expense.date }}" required>
+        </div>
+        <div class="standalone-field">
+          <label>Category</label>
+          <select name="category" required>
+            {% for c in categories %}
+              <option value="{{ c }}" {% if c == expense.category %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="standalone-field" style="margin-top:12px;">
+        <label>Description</label>
+        <input type="text" name="description" value="{{ expense.description }}" required>
+      </div>
+      <div class="standalone-field" style="margin-top:12px;">
+        <label>Amount ($)</label>
+        <input type="number" name="amount" min="0" step="0.01" value="{{ expense.amount }}" required>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button type="submit" class="btn-save">Save Changes</button>
+        <a href="/" class="btn-back">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</body>
 </html>

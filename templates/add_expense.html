@@ -1,490 +1,454 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Expense Tracker</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <div class="container">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
 
-      <div class="header">
-        <h1>Expense Tracker</h1>
-        <div class="header-actions">
-          <a href="/categories" class="btn btn-secondary">Categories</a>
-          <a href="/budgets" class="btn btn-secondary">Budgets</a>
-          <a href="/accounts" class="btn btn-secondary">Accounts</a>
-          <a href="/insights" class="btn btn-secondary">Insights</a>
-        </div>
-      </div>
+<header class="topbar">
+  <div class="topbar-brand">Finance Tracker</div>
+  <nav class="topbar-nav">
+    <a href="/budgets">Budgets</a>
+    <a href="/categories">Categories</a>
+    <a href="/accounts">Accounts</a>
+    <a href="/insights">Insights</a>
+  </nav>
+</header>
 
-      <!-- Month-over-Month banner -->
-      <div class="card mom-card">
-        <div class="mom-content">
-          <div>
-            <div class="mom-label">This Month</div>
-            <div class="mom-value">${{ "%.2f"|format(mom.current) }}</div>
-          </div>
-          <div class="mom-arrow">
-            {% if mom.change_pct is not none %}
-              {% if mom.change_pct > 0 %}
-                <span class="mom-up">▲ {{ "%.1f"|format(mom.change_pct) }}%</span>
-              {% elif mom.change_pct < 0 %}
-                <span class="mom-down">▼ {{ "%.1f"|format(mom.change_pct|abs) }}%</span>
-              {% else %}
-                <span class="mom-flat">No change</span>
-              {% endif %}
-              vs {{ mom.prev_month_name }}
-            {% else %}
-              <span class="mom-flat">No previous data</span>
-            {% endif %}
-          </div>
-          <div>
-            <div class="mom-label">{{ mom.prev_month_name }}</div>
-            <div class="mom-value mom-prev">${{ "%.2f"|format(mom.previous) }}</div>
-          </div>
-        </div>
-      </div>
+<div class="app-shell">
 
-      <!-- Summary -->
-      <div class="summary-grid">
-        <div class="summary-card">
-          <div class="summary-label">Opening Balance</div>
-          <div class="summary-value">${{ "%.2f"|format(totals.opening) }}</div>
-        </div>
-        <div class="summary-card income">
-          <div class="summary-label">Total Income</div>
-          <div class="summary-value">${{ "%.2f"|format(totals.income) }}</div>
-        </div>
-        <div class="summary-card expense">
-          <div class="summary-label">Real Expenses</div>
-          <div class="summary-value">${{ "%.2f"|format(totals.expenses) }}</div>
-        </div>
-        <div class="summary-card {% if totals.splitwise_net < 0 %}expense{% else %}owed{% endif %}">
-          <div class="summary-label">Splitwise Net</div>
-          <div class="summary-value">
-            {% if totals.splitwise_net >= 0 %}+{% endif %}${{ "%.2f"|format(totals.splitwise_net) }}
-          </div>
-          <div class="hint" style="margin-top:4px;">
-            {% if totals.splitwise_net > 0 %}They owe you
-            {% elif totals.splitwise_net < 0 %}You owe them
-            {% else %}Even{% endif %}
-          </div>
-        </div>
-        <div class="summary-card balance">
-          <div class="summary-label">Current Balance</div>
-          <div class="summary-value">${{ "%.2f"|format(totals.balance) }}</div>
-        </div>
-      </div>
-
-      <!-- Budget progress -->
-      {% if budgets %}
-      <div class="card">
-        <h2>Budgets — This Month</h2>
-        <div class="budget-list">
-          {% for b in budgets %}
-            <div class="budget-row">
-              <div class="budget-row-top">
-                <span class="budget-cat">{{ b.category }}</span>
-                <span class="budget-amt">
-                  ${{ "%.2f"|format(b.spent) }} / ${{ "%.2f"|format(b.amount) }}
-                  {% if b.status == "red" %}<span class="budget-over">Over by ${{ "%.2f"|format(-b.remaining) }}</span>{% endif %}
-                </span>
-              </div>
-              <div class="budget-bar">
-                <div class="budget-bar-fill budget-{{ b.status }}" style="width: {{ b.pct }}%;"></div>
-              </div>
-              <div class="budget-pct">{{ "%.0f"|format(b.pct_raw) }}% used</div>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-
-      <!-- Account balances -->
-      <div class="card">
-        <h2>Account Balances</h2>
-        <div class="accounts-grid">
-          {% for name, balance in accounts.items() %}
-            <div class="account-item">
-              <div class="account-name">
-                {{ name }}
-                {% if name == income_account %}<span class="tag">Income</span>{% endif %}
-                {% if name == expense_account %}<span class="tag tag-red">Spending</span>{% endif %}
-                {% if name == splitwise_account %}<span class="tag tag-blue">Splitwise</span>{% endif %}
-              </div>
-              <div class="account-balance">${{ "%.2f"|format(balance) }}</div>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      <!-- Tabs -->
-      <div class="card">
-        <div class="tabs">
-          <button class="tab-btn active" onclick="showTab('expense-tab', this)">Add Expense</button>
-          <button class="tab-btn" onclick="showTab('income-tab', this)">Add Income</button>
-          <button class="tab-btn" onclick="showTab('transfer-tab', this)">Transfer</button>
-        </div>
-
-        <!-- Expense tab -->
-        <div id="expense-tab" class="tab-content active">
-          <p class="tab-note">Regular expenses will be deducted from <strong>{{ expense_account }}</strong>.</p>
-          <form method="post" action="/add">
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="exp-date">Date</label>
-                <input type="date" id="exp-date" name="date" value="{{ today }}" required>
-              </div>
-              <div class="form-group">
-                <label for="exp-category">Category</label>
-                <select id="exp-category" name="category" required>
-                  {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-                </select>
-              </div>
-              <div class="form-group full-width">
-                <label for="exp-description">Description</label>
-                <input type="text" id="exp-description" name="description" required>
-              </div>
-              <div class="form-group">
-                <label for="exp-amount">Total Amount ($)</label>
-                <input type="number" id="exp-amount" name="amount" min="0" step="0.01" required>
-              </div>
-              <div class="form-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" id="is-split" name="is_split" onchange="toggleSplit()">
-                  Split this expense (Splitwise)
-                </label>
-              </div>
-              <div class="form-group full-width" id="split-fields" style="display:none;">
-                <div class="form-grid" style="gap: 16px;">
-                  <div class="form-group">
-                    <label for="direction">Who Paid?</label>
-                    <select id="direction" name="direction">
-                      <option value="you_paid">I paid</option>
-                      <option value="they_paid">Someone else paid</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label for="your-share">Your Share ($)</label>
-                    <input type="number" id="your-share" name="your_share" min="0" step="0.01">
-                  </div>
-                  <div class="form-group full-width">
-                    <small class="hint">
-                      If you paid: rest tracked as owed to you in {{ splitwise_account }}.<br>
-                      If they paid: your share tracked as you owing them in {{ splitwise_account }}.
-                    </small>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group full-width" style="justify-content: flex-end; align-items: flex-end;">
-                <button type="submit" class="btn btn-primary">Add Expense</button>
-              </div>
-            </div>
-          </form>
-        </div>
-
-        <!-- Income tab -->
-        <div id="income-tab" class="tab-content">
-          <p class="tab-note">Income will be added to <strong>{{ income_account }}</strong>.</p>
-          <form method="post" action="/add_income">
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="inc-date">Date</label>
-                <input type="date" id="inc-date" name="date" value="{{ today }}" required>
-              </div>
-              <div class="form-group">
-                <label for="inc-category">Source</label>
-                <select id="inc-category" name="category" required>
-                  {% for c in income_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-                </select>
-              </div>
-              <div class="form-group full-width">
-                <label for="inc-description">Description</label>
-                <input type="text" id="inc-description" name="description" required>
-              </div>
-              <div class="form-group">
-                <label for="inc-amount">Amount ($)</label>
-                <input type="number" id="inc-amount" name="amount" min="0" step="0.01" required>
-              </div>
-              <div class="form-group" style="justify-content: flex-end;">
-                <button type="submit" class="btn btn-primary">Add Income</button>
-              </div>
-            </div>
-          </form>
-        </div>
-
-        <!-- Transfer tab -->
-        <div id="transfer-tab" class="tab-content">
-          <p class="tab-note">Move money between accounts (e.g., {{ income_account }} → {{ expense_account }}).</p>
-          <form method="post" action="/add_transfer">
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="tr-date">Date</label>
-                <input type="date" id="tr-date" name="date" value="{{ today }}" required>
-              </div>
-              <div class="form-group">
-                <label for="tr-amount">Amount ($)</label>
-                <input type="number" id="tr-amount" name="amount" min="0" step="0.01" required>
-              </div>
-              <div class="form-group">
-                <label for="tr-from">From</label>
-                <select id="tr-from" name="from" required>
-                  {% for a in account_names %}
-                    <option value="{{ a }}" {% if a == income_account %}selected{% endif %}>{{ a }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="tr-to">To</label>
-                <select id="tr-to" name="to" required>
-                  {% for a in account_names %}
-                    <option value="{{ a }}" {% if a == expense_account %}selected{% endif %}>{{ a }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="form-group full-width">
-                <label for="tr-note">Note (optional)</label>
-                <input type="text" id="tr-note" name="note">
-              </div>
-              <div class="form-group full-width" style="justify-content: flex-end; align-items: flex-end;">
-                <button type="submit" class="btn btn-primary">Record Transfer</button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- Splitwise pending -->
-      <div class="card">
-        <h2>Splitwise — Pending</h2>
-        {% set pending = splits | selectattr("status", "equalto", "pending") | list %}
-        {% if pending %}
-          <table>
-            <thead>
-              <tr><th>Date</th><th>Description</th><th>Direction</th><th>Total</th><th>Your Share</th><th>Net</th><th>Action</th></tr>
-            </thead>
-            <tbody>
-              {% for s in splits %}
-                {% if s.status == "pending" %}
-                  <tr>
-                    <td>{{ s.date }}</td>
-                    <td>{{ s.description }}</td>
-                    <td>
-                      {% if s.direction == "you_paid" %}
-                        <span class="tag tag-blue">You paid</span>
-                      {% else %}
-                        <span class="tag tag-red">They paid</span>
-                      {% endif %}
-                    </td>
-                    <td>${{ "%.2f"|format(s.total) }}</td>
-                    <td>${{ "%.2f"|format(s.your_share) }}</td>
-                    <td class="amount">
-                      {% if s.direction == "you_paid" %}
-                        <span class="income-amount">+${{ "%.2f"|format(s.other_share) }}</span>
-                      {% else %}
-                        <span class="expense-amount">-${{ "%.2f"|format(s.your_share) }}</span>
-                      {% endif %}
-                    </td>
-                    <td>
-                      <form method="post" action="/settle_split/{{ s.id }}" style="display:flex; gap:6px;">
-                        <select name="settle_account" class="inline-select">
-                          {% for a in account_names %}
-                            <option value="{{ a }}" {% if a == expense_account %}selected{% endif %}>{{ a }}</option>
-                          {% endfor %}
-                        </select>
-                        <button type="submit" class="btn btn-sm btn-primary">Settle</button>
-                        <a href="/delete_split/{{ s.id }}" class="btn btn-sm btn-secondary">Delete</a>
-                      </form>
-                    </td>
-                  </tr>
-                {% endif %}
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="empty-state">Nothing pending.</div>
+  <!-- STATS ROW -->
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-label">Balance</div>
+      <div class="stat-value">${{ "%.2f"|format(totals.balance) }}</div>
+      <div class="stat-sub">All accounts</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Income</div>
+      <div class="stat-value green">${{ "%.2f"|format(totals.income) }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Expenses</div>
+      <div class="stat-value red">${{ "%.2f"|format(totals.expenses) }}</div>
+      <div class="stat-sub">
+        {% if mom.change_pct is not none %}
+          <span class="mom-badge {% if mom.change_pct > 0 %}up{% elif mom.change_pct < 0 %}down{% else %}flat{% endif %}">
+            {% if mom.change_pct > 0 %}▲{% elif mom.change_pct < 0 %}▼{% endif %}
+            {% if mom.change_pct %}{{ "%.1f"|format(mom.change_pct|abs) }}%{% else %}—{% endif %}
+            vs {{ mom.prev_month_name }}
+          </span>
         {% endif %}
       </div>
-
-      <!-- Splitwise settled -->
-      {% set settled = splits | selectattr("status", "equalto", "settled") | list %}
-      {% if settled %}
-      <div class="card">
-        <h2>Splitwise — Settled</h2>
-        <table>
-          <thead>
-            <tr><th>Date</th><th>Description</th><th>Direction</th><th>Your Share</th><th>Settled On</th><th>Actions</th></tr>
-          </thead>
-          <tbody>
-            {% for s in splits %}
-              {% if s.status == "settled" %}
-                <tr>
-                  <td>{{ s.date }}</td>
-                  <td>{{ s.description }}</td>
-                  <td>{% if s.direction == "you_paid" %}You paid{% else %}They paid{% endif %}</td>
-                  <td>${{ "%.2f"|format(s.your_share) }}</td>
-                  <td>{{ s.settle_date }}</td>
-                  <td>
-                    <div class="actions">
-                      <a href="/unsettle_split/{{ s.id }}" class="action-link">Unsettle</a>
-                      <a href="/delete_split/{{ s.id }}" class="action-link delete">Delete</a>
-                    </div>
-                  </td>
-                </tr>
-              {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Splitwise Net</div>
+      <div class="stat-value {% if totals.splitwise_net < 0 %}red{% elif totals.splitwise_net > 0 %}green{% endif %}">
+        {% if totals.splitwise_net >= 0 %}+{% endif %}${{ "%.2f"|format(totals.splitwise_net) }}
       </div>
-      {% endif %}
+      <div class="stat-sub">
+        {% if totals.splitwise_net > 0 %}They owe you
+        {% elif totals.splitwise_net < 0 %}You owe them
+        {% else %}Even{% endif %}
+      </div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">This Month</div>
+      <div class="stat-value blue">${{ "%.2f"|format(mom.current) }}</div>
+      <div class="stat-sub">vs ${{ "%.2f"|format(mom.previous) }} last month</div>
+    </div>
+  </div>
 
-      <!-- Expenses table with search/filter -->
+  <!-- LEFT PANEL -->
+  <aside class="left-panel">
+
+    <div class="form-tabs">
+      <button class="form-tab active" onclick="switchTab('exp', this)">Expense</button>
+      <button class="form-tab" onclick="switchTab('inc', this)">Income</button>
+    </div>
+
+    <!-- Expense form -->
+    <div id="tab-exp" class="form-body active">
+      <form method="post" action="/add">
+        <div class="field-row">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" name="date" value="{{ today }}" required>
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select name="category" required>
+              {% for c in categories %}<option>{{ c }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Description</label>
+          <input type="text" name="description" placeholder="What was this for?" required>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Amount ($)</label>
+          <input type="number" name="amount" min="0" step="0.01" placeholder="0.00" required>
+        </div>
+        <label class="split-toggle" style="margin-top:10px;">
+          <input type="checkbox" id="is-split" name="is_split" onchange="toggleSplit()">
+          Splitwise expense
+        </label>
+        <div id="split-extra" class="split-extra" style="margin-top:8px;">
+          <div class="field">
+            <label>Who paid?</label>
+            <select name="direction">
+              <option value="you_paid">I paid</option>
+              <option value="they_paid">Someone else paid</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>My share ($)</label>
+            <input type="number" id="your-share" name="your_share" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+        <button type="submit" class="btn-submit" style="margin-top:12px;">Add Expense</button>
+      </form>
+    </div>
+
+    <!-- Income form -->
+    <div id="tab-inc" class="form-body">
+      <form method="post" action="/add_income">
+        <div class="field-row">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" name="date" value="{{ today }}" required>
+          </div>
+          <div class="field">
+            <label>Source</label>
+            <select name="category" required>
+              {% for c in income_categories %}<option>{{ c }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Description</label>
+          <input type="text" name="description" placeholder="Income description" required>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Amount ($)</label>
+          <input type="number" name="amount" min="0" step="0.01" placeholder="0.00" required>
+        </div>
+        <button type="submit" class="btn-submit green-btn" style="margin-top:12px;">Add Income</button>
+      </form>
+    </div>
+
+    <!-- Transfer -->
+    <div class="transfer-section">
+      <div class="section-label">Transfer Between Accounts</div>
+      <form method="post" action="/add_transfer">
+        <div class="field-row" style="margin-bottom:8px;">
+          <div class="field">
+            <label>From</label>
+            <select name="from" required>
+              {% for a in account_names %}
+                <option value="{{ a }}" {% if a == income_account %}selected{% endif %}>{{ a }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label>To</label>
+            <select name="to" required>
+              {% for a in account_names %}
+                <option value="{{ a }}" {% if a == expense_account %}selected{% endif %}>{{ a }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" name="date" value="{{ today }}" required>
+          </div>
+          <div class="field">
+            <label>Amount ($)</label>
+            <input type="number" name="amount" min="0" step="0.01" placeholder="0.00" required>
+          </div>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label>Note</label>
+          <input type="text" name="note" placeholder="Optional">
+        </div>
+        <button type="submit" class="btn-submit" style="margin-top:10px; background:var(--surface2); border:1px solid var(--border); color:var(--text);">Record Transfer</button>
+      </form>
+    </div>
+
+    <!-- Account balances -->
+    <div class="accounts-section">
+      <div class="section-label">Account Balances</div>
+      <div class="accounts-mini">
+        {% for name, balance in accounts.items() %}
+          <div class="account-chip {% if name == income_account %}income-acc{% elif name == expense_account %}spend-acc{% elif name == splitwise_account %}split-acc{% endif %}">
+            <div class="account-chip-name">{{ name }}</div>
+            <div class="account-chip-bal">${{ "%.2f"|format(balance) }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- RIGHT PANEL -->
+  <main class="right-panel">
+
+    <!-- Budgets -->
+    {% if budgets %}
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header">
+        <span class="card-title">Budgets — This Month</span>
+        <a href="/budgets" style="font-size:11px; color:var(--accent); text-decoration:none;">Manage →</a>
+      </div>
+      <div class="budget-grid">
+        {% for b in budgets %}
+          <div class="budget-item">
+            <div class="budget-top">
+              <span class="budget-name">{{ b.category }}</span>
+              <span class="budget-nums">${{ "%.0f"|format(b.spent) }} / ${{ "%.0f"|format(b.amount) }}</span>
+            </div>
+            <div class="budget-track">
+              <div class="budget-fill {{ b.status[0] }}" style="width:{{ b.pct }}%"></div>
+            </div>
+            <div class="budget-pct">
+              {% if b.status == "red" %}<span style="color:var(--red)">Over ${{ "%.2f"|format(-b.remaining) }}</span>
+              {% else %}{{ "%.0f"|format(b.pct_raw) }}% used{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Expenses + Income side by side -->
+    <div class="content-grid">
+
       <div class="card">
-        <h2>Recent Expenses</h2>
-
+        <div class="card-header">
+          <span class="card-title">Expenses</span>
+          <span class="card-count">{{ expenses|length }}</span>
+        </div>
         <form method="get" action="/" class="filter-bar">
-          <input type="text" name="search" value="{{ search }}" placeholder="Search description..." class="filter-input">
-          <select name="filter_category" class="filter-input">
-            <option value="">All categories</option>
+          <input type="text" name="search" value="{{ search }}" placeholder="Search…">
+          <select name="filter_category">
+            <option value="">All cats</option>
             {% for c in categories %}
               <option value="{{ c }}" {% if c == filter_category %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
           </select>
-          <input type="date" name="filter_from" value="{{ filter_from }}" class="filter-input" title="From date">
-          <input type="date" name="filter_to" value="{{ filter_to }}" class="filter-input" title="To date">
-          <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-          {% if has_filters %}
-            <a href="/" class="btn btn-sm btn-secondary">Clear</a>
-          {% endif %}
+          <input type="date" name="filter_from" value="{{ filter_from }}" title="From date">
+          <input type="date" name="filter_to" value="{{ filter_to }}" title="To date">
+          <button type="submit" class="btn-filter">Go</button>
+          {% if has_filters %}<a href="/" class="btn-clear">✕</a>{% endif %}
         </form>
-
-        {% if expenses %}
-          <table>
-            <thead>
-              <tr><th>Date</th><th>Description</th><th>Category</th><th>Account</th><th>Amount</th><th>Actions</th></tr>
-            </thead>
+        <div class="table-wrap">
+          {% if expenses %}
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Description</th><th>Cat</th><th>Amount</th><th></th></tr></thead>
             <tbody>
-              {% for expense in expenses %}
-                <tr>
-                  <td>{{ expense.date }}</td>
-                  <td>
-                    {{ expense.description }}
-                    {% if expense.is_split %}
-                      {% if expense.direction == "they_paid" %}
-                        <span class="tag tag-red">Split · They paid</span>
-                      {% else %}
-                        <span class="tag tag-blue">Split · You paid</span>
-                      {% endif %}
-                    {% endif %}
-                  </td>
-                  <td><span class="category-badge">{{ expense.category }}</span></td>
-                  <td>{{ expense.account }}</td>
-                  <td class="amount expense-amount">-${{ "%.2f"|format(expense.amount) }}</td>
-                  <td>
-                    <div class="actions">
-                      {% if expense.is_split %}
-                        <span class="action-link" style="color:#a0aec0;">Manage via Splitwise</span>
-                      {% else %}
-                        <a href="/edit/{{ expense.id }}" class="action-link">Edit</a>
-                        <a href="/delete/{{ expense.id }}" class="action-link delete">Delete</a>
-                      {% endif %}
+              {% for e in expenses %}
+              <tr>
+                <td style="color:var(--muted);font-size:12px;white-space:nowrap;">{{ e.date }}</td>
+                <td class="desc-cell">
+                  {{ e.description }}
+                  {% if e.is_split %}
+                    <span class="badge {% if e.direction == 'they_paid' %}badge-split-them{% else %}badge-split-you{% endif %}">
+                      {% if e.direction == 'they_paid' %}They{% else %}You{% endif %}
+                    </span>
+                  {% endif %}
+                </td>
+                <td><span class="badge badge-cat">{{ e.category }}</span></td>
+                <td class="amount-cell neg">-${{ "%.2f"|format(e.amount) }}</td>
+                <td>
+                  {% if e.is_split %}
+                    <span class="act locked">locked</span>
+                  {% else %}
+                    <div class="action-row">
+                      <a href="/edit/{{ e.id }}" class="act">edit</a>
+                      <a href="/delete/{{ e.id }}" class="act del">del</a>
                     </div>
-                  </td>
-                </tr>
+                  {% endif %}
+                </td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
-        {% else %}
-          <div class="empty-state">
-            {% if has_filters %}No expenses match those filters.{% else %}No expenses logged yet.{% endif %}
-          </div>
-        {% endif %}
+          {% else %}
+          <div class="empty">{% if has_filters %}No matches.{% else %}No expenses yet.{% endif %}</div>
+          {% endif %}
+        </div>
       </div>
 
-      <!-- Income table -->
       <div class="card">
-        <h2>Recent Income</h2>
-        {% if incomes %}
-          <table>
-            <thead>
-              <tr><th>Date</th><th>Description</th><th>Source</th><th>Account</th><th>Amount</th><th>Actions</th></tr>
-            </thead>
+        <div class="card-header">
+          <span class="card-title">Income</span>
+          <span class="card-count">{{ incomes|length }}</span>
+        </div>
+        <div class="table-wrap">
+          {% if incomes %}
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Description</th><th>Source</th><th>Amount</th><th></th></tr></thead>
             <tbody>
-              {% for income in incomes %}
-                <tr>
-                  <td>{{ income.date }}</td>
-                  <td>{{ income.description }}</td>
-                  <td><span class="category-badge income-badge">{{ income.category }}</span></td>
-                  <td>{{ income.account }}</td>
-                  <td class="amount income-amount">+${{ "%.2f"|format(income.amount) }}</td>
-                  <td>
-                    <div class="actions">
-                      <a href="/delete_income/{{ income.id }}" class="action-link delete">Delete</a>
-                    </div>
-                  </td>
-                </tr>
+              {% for i in incomes %}
+              <tr>
+                <td style="color:var(--muted);font-size:12px;white-space:nowrap;">{{ i.date }}</td>
+                <td class="desc-cell">{{ i.description }}</td>
+                <td><span class="badge badge-inc">{{ i.category }}</span></td>
+                <td class="amount-cell pos">+${{ "%.2f"|format(i.amount) }}</td>
+                <td><a href="/delete_income/{{ i.id }}" class="act del">del</a></td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
-        {% else %}
-          <div class="empty-state">No income logged yet.</div>
-        {% endif %}
-      </div>
-
-      <!-- Transfers table -->
-      <div class="card">
-        <h2>Recent Transfers</h2>
-        {% if transfers %}
-          <table>
-            <thead>
-              <tr><th>Date</th><th>From</th><th>To</th><th>Amount</th><th>Note</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              {% for t in transfers %}
-                <tr>
-                  <td>{{ t.date }}</td>
-                  <td>{{ t.from_acc }}</td>
-                  <td>{{ t.to_acc }}</td>
-                  <td class="amount">${{ "%.2f"|format(t.amount) }}</td>
-                  <td>
-                    {{ t.note }}
-                    {% if t.is_settlement %}<span class="tag">Settlement</span>{% endif %}
-                  </td>
-                  <td>
-                    <div class="actions">
-                      {% if t.is_settlement %}
-                        <span class="action-link" style="color:#a0aec0;">Manage via Splitwise</span>
-                      {% else %}
-                        <a href="/delete_transfer/{{ t.id }}" class="action-link delete">Delete</a>
-                      {% endif %}
-                    </div>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="empty-state">No transfers yet.</div>
-        {% endif %}
+          {% else %}
+          <div class="empty">No income yet.</div>
+          {% endif %}
+        </div>
       </div>
 
     </div>
 
-    <script>
-      function showTab(tabId, btn) {
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById(tabId).classList.add('active');
-        btn.classList.add('active');
-      }
-      function toggleSplit() {
-        const checked = document.getElementById('is-split').checked;
-        const fields = document.getElementById('split-fields');
-        const yourShare = document.getElementById('your-share');
-        fields.style.display = checked ? 'block' : 'none';
-        yourShare.required = checked;
-      }
-    </script>
-  </body>
+    <!-- Splitwise Pending -->
+    <div class="card" style="margin-bottom:12px; margin-top:12px;">
+      <div class="card-header">
+        <span class="card-title">Splitwise — Pending</span>
+        {% set pending = splits | selectattr("status", "equalto", "pending") | list %}
+        <span class="card-count">{{ pending|length }}</span>
+      </div>
+      {% if pending %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Description</th><th>Dir</th><th>Total</th><th>Your Share</th><th>Net</th><th>Action</th></tr></thead>
+          <tbody>
+            {% for s in splits if s.status == "pending" %}
+            <tr>
+              <td style="color:var(--muted);font-size:12px;">{{ s.date }}</td>
+              <td class="desc-cell">{{ s.description }}</td>
+              <td>
+                {% if s.direction == "you_paid" %}
+                  <span class="badge badge-split-you">You paid</span>
+                {% else %}
+                  <span class="badge badge-split-them">They paid</span>
+                {% endif %}
+              </td>
+              <td class="amount-cell">${{ "%.2f"|format(s.total) }}</td>
+              <td class="amount-cell">${{ "%.2f"|format(s.your_share) }}</td>
+              <td class="amount-cell {% if s.direction == 'you_paid' %}pos{% else %}neg{% endif %}">
+                {% if s.direction == "you_paid" %}+${{ "%.2f"|format(s.other_share) }}{% else %}-${{ "%.2f"|format(s.your_share) }}{% endif %}
+              </td>
+              <td>
+                <form method="post" action="/settle_split/{{ s.id }}" class="settle-form">
+                  <select name="settle_account">
+                    {% for a in account_names %}
+                      <option value="{{ a }}" {% if a == expense_account %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="btn-settle">Settle</button>
+                  <a href="/delete_split/{{ s.id }}" class="act del" style="margin-left:4px;">del</a>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">Nothing pending.</div>
+      {% endif %}
+    </div>
+
+    <!-- Splitwise Settled -->
+    {% set settled = splits | selectattr("status", "equalto", "settled") | list %}
+    {% if settled %}
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header">
+        <span class="card-title">Splitwise — Settled</span>
+        <span class="card-count">{{ settled|length }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Description</th><th>Dir</th><th>Your Share</th><th>Settled On</th><th></th></tr></thead>
+          <tbody>
+            {% for s in splits if s.status == "settled" %}
+            <tr>
+              <td style="color:var(--muted);font-size:12px;">{{ s.date }}</td>
+              <td class="desc-cell">{{ s.description }}</td>
+              <td style="font-size:12px;color:var(--muted);">{% if s.direction == "you_paid" %}You paid{% else %}They paid{% endif %}</td>
+              <td class="amount-cell">${{ "%.2f"|format(s.your_share) }}</td>
+              <td style="color:var(--muted);font-size:12px;">{{ s.settle_date }}</td>
+              <td>
+                <div class="action-row">
+                  <a href="/unsettle_split/{{ s.id }}" class="act">undo</a>
+                  <a href="/delete_split/{{ s.id }}" class="act del">del</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Transfers -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Transfers</span>
+        <span class="card-count">{{ transfers|length }}</span>
+      </div>
+      {% if transfers %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>From</th><th>To</th><th>Amount</th><th>Note</th><th></th></tr></thead>
+          <tbody>
+            {% for t in transfers %}
+            <tr>
+              <td style="color:var(--muted);font-size:12px;">{{ t.date }}</td>
+              <td style="font-size:12px;">{{ t.from_acc }}</td>
+              <td style="font-size:12px;">{{ t.to_acc }}</td>
+              <td class="amount-cell">${{ "%.2f"|format(t.amount) }}</td>
+              <td style="font-size:12px;color:var(--muted);">
+                {{ t.note }}
+                {% if t.is_settlement %}<span class="badge badge-settle">settlement</span>{% endif %}
+              </td>
+              <td>
+                {% if t.is_settlement %}
+                  <span class="act locked">locked</span>
+                {% else %}
+                  <a href="/delete_transfer/{{ t.id }}" class="act del">del</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">No transfers yet.</div>
+      {% endif %}
+    </div>
+
+  </main>
+</div>
+
+<script>
+  function switchTab(tab, btn) {
+    document.querySelectorAll('.form-body').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.form-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    btn.classList.add('active');
+  }
+  function toggleSplit() {
+    const checked = document.getElementById('is-split').checked;
+    document.getElementById('split-extra').classList.toggle('visible', checked);
+    document.getElementById('your-share').required = checked;
+  }
+</script>
+</body>
 </html>
