@@ -1,0 +1,234 @@
+{# Renders a single transaction row with inline edit. Expects `t` dict with .type and .data #}
+
+{% if t.type == "expense" %}
+  {% set uid = "exp-" ~ t.data.id %}
+  <div class="txn-row" id="view-{{ uid }}">
+    <div class="txn-icon exp-i">−</div>
+    <div class="txn-body">
+      <div class="txn-title">
+        {{ t.data.description }}
+        {% if t.data.is_split %}
+          <span class="badge {% if t.data.direction == 'they_paid' %}badge-them{% else %}badge-you{% endif %}">
+            {% if t.data.direction == 'they_paid' %}Split · They paid{% else %}Split · You paid{% endif %}
+          </span>
+        {% endif %}
+      </div>
+      <div class="txn-meta">
+        <span>{{ t.data.date }}</span>
+        <span class="badge badge-cat">{{ t.data.category }}</span>
+        <span>{{ t.data.account }}</span>
+      </div>
+    </div>
+    <div class="txn-right">
+      <div class="txn-amt neg">-${{ "%.2f"|format(t.data.amount) }}</div>
+      <div class="txn-actions">
+        {% if t.data.is_split %}
+          <span class="act-link locked">locked</span>
+        {% else %}
+          <a href="javascript:void(0)" onclick="toggleEdit('{{ uid }}')" class="act-link">edit</a>
+          <a href="/delete/{{ t.data.id }}" class="act-link del">del</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% if not t.data.is_split %}
+    <div class="edit-row" id="edit-{{ uid }}" style="display:none;">
+      <form method="post" action="/edit/{{ t.data.id }}">
+        <div class="row-2">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" name="date" value="{{ t.data.date }}" required>
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select name="category" required>
+              {% for c in categories %}
+                <option value="{{ c }}" {% if c == t.data.category %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <input type="text" name="description" value="{{ t.data.description }}" required>
+        </div>
+        <div class="field">
+          <label>Amount ($)</label>
+          <input type="number" name="amount" min="0" step="0.01" value="{{ t.data.amount }}" required>
+        </div>
+        <div class="edit-actions">
+          <button type="submit" class="btn-add">Save</button>
+          <button type="button" class="btn-add grey" onclick="toggleEdit('{{ uid }}')">Cancel</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+
+{% elif t.type == "income" %}
+  {% set uid = "inc-" ~ t.data.id %}
+  <div class="txn-row" id="view-{{ uid }}">
+    <div class="txn-icon inc-i">+</div>
+    <div class="txn-body">
+      <div class="txn-title">{{ t.data.description }}</div>
+      <div class="txn-meta">
+        <span>{{ t.data.date }}</span>
+        <span class="badge badge-inc">{{ t.data.category }}</span>
+        <span>{{ t.data.account }}</span>
+      </div>
+    </div>
+    <div class="txn-right">
+      <div class="txn-amt pos">+${{ "%.2f"|format(t.data.amount) }}</div>
+      <div class="txn-actions">
+        <a href="javascript:void(0)" onclick="toggleEdit('{{ uid }}')" class="act-link">edit</a>
+        <a href="/delete_income/{{ t.data.id }}" class="act-link del">del</a>
+      </div>
+    </div>
+  </div>
+  <div class="edit-row" id="edit-{{ uid }}" style="display:none;">
+    <form method="post" action="/edit_income/{{ t.data.id }}">
+      <div class="row-2">
+        <div class="field">
+          <label>Date</label>
+          <input type="date" name="date" value="{{ t.data.date }}" required>
+        </div>
+        <div class="field">
+          <label>Source</label>
+          <select name="category" required>
+            {% for c in income_categories %}
+              <option value="{{ c }}" {% if c == t.data.category %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <input type="text" name="description" value="{{ t.data.description }}" required>
+      </div>
+      <div class="field">
+        <label>Amount ($)</label>
+        <input type="number" name="amount" min="0" step="0.01" value="{{ t.data.amount }}" required>
+      </div>
+      <div class="edit-actions">
+        <button type="submit" class="btn-add green">Save</button>
+        <button type="button" class="btn-add grey" onclick="toggleEdit('{{ uid }}')">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+{% elif t.type == "transfer" %}
+  <div class="txn-row">
+    <div class="txn-icon tr-i">↔</div>
+    <div class="txn-body">
+      <div class="txn-title">
+        {{ t.data.from_acc }} → {{ t.data.to_acc }}
+        {% if t.data.is_settlement %}<span class="badge badge-settle">settlement</span>{% endif %}
+      </div>
+      <div class="txn-meta">
+        <span>{{ t.data.date }}</span>
+        {% if t.data.note %}<span>{{ t.data.note }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="txn-right">
+      <div class="txn-amt neutral">${{ "%.2f"|format(t.data.amount) }}</div>
+      <div class="txn-actions">
+        {% if t.data.is_settlement %}
+          <span class="act-link locked">locked</span>
+        {% else %}
+          <a href="/delete_transfer/{{ t.data.id }}" class="act-link del">del</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+{% elif t.type == "split" %}
+  {% set uid = "spl-" ~ t.data.id %}
+  <div class="txn-row" id="view-{{ uid }}">
+    <div class="txn-icon sp-i">⚡</div>
+    <div class="txn-body">
+      <div class="txn-title">
+        {{ t.data.description }}
+        {% if t.data.status == "pending" %}
+          <span class="badge badge-pending">Pending</span>
+        {% else %}
+          <span class="badge badge-settled">Settled</span>
+        {% endif %}
+      </div>
+      <div class="txn-meta">
+        <span>{{ t.data.date }}</span>
+        <span class="badge badge-cat">{{ t.data.category }}</span>
+        {% if t.data.direction == "you_paid" %}
+          <span class="badge badge-you">You paid</span>
+        {% else %}
+          <span class="badge badge-them">They paid</span>
+        {% endif %}
+        <span>Total ${{ "%.2f"|format(t.data.total) }} · Your share ${{ "%.2f"|format(t.data.your_share) }}</span>
+      </div>
+      {% if t.data.status == "pending" %}
+        <form method="post" action="/settle_split/{{ t.data.id }}" class="settle-inline">
+          <select name="settle_account">
+            {% for a in account_names %}
+              <option value="{{ a }}" {% if a == expense_account %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn-settle">Settle</button>
+        </form>
+      {% endif %}
+    </div>
+    <div class="txn-right">
+      <div class="txn-amt {% if t.data.direction == 'you_paid' %}pos{% else %}neg{% endif %}">
+        {% if t.data.direction == "you_paid" %}+${{ "%.2f"|format(t.data.other_share) }}{% else %}-${{ "%.2f"|format(t.data.your_share) }}{% endif %}
+      </div>
+      <div class="txn-actions">
+        <a href="javascript:void(0)" onclick="toggleEdit('{{ uid }}')" class="act-link">edit</a>
+        {% if t.data.status == "settled" %}
+          <a href="/unsettle_split/{{ t.data.id }}" class="act-link">undo</a>
+        {% endif %}
+        <a href="/delete_split/{{ t.data.id }}" class="act-link del">del</a>
+      </div>
+    </div>
+  </div>
+  <div class="edit-row" id="edit-{{ uid }}" style="display:none;">
+    <form method="post" action="/edit_split/{{ t.data.id }}">
+      <div class="row-2">
+        <div class="field">
+          <label>Date</label>
+          <input type="date" name="date" value="{{ t.data.date }}" required>
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select name="category" required>
+            {% for c in categories %}
+              <option value="{{ c }}" {% if c == t.data.category %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <input type="text" name="description" value="{{ t.data.description }}" required>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Total Amount ($)</label>
+          <input type="number" name="total" min="0" step="0.01" value="{{ t.data.total }}" required>
+        </div>
+        <div class="field">
+          <label>Your Share ($)</label>
+          <input type="number" name="your_share" min="0" step="0.01" value="{{ t.data.your_share }}" required>
+        </div>
+      </div>
+      <div class="field">
+        <label>Who paid?</label>
+        <select name="direction">
+          <option value="you_paid" {% if t.data.direction == "you_paid" %}selected{% endif %}>I paid</option>
+          <option value="they_paid" {% if t.data.direction == "they_paid" %}selected{% endif %}>Someone else paid</option>
+        </select>
+      </div>
+      <div class="edit-actions">
+        <button type="submit" class="btn-add">Save</button>
+        <button type="button" class="btn-add grey" onclick="toggleEdit('{{ uid }}')">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+{% endif %}

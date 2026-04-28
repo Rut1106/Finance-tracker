@@ -20,118 +20,132 @@
 
 <div class="page-wrap">
 
-  <div class="page-header">
-    <div class="page-title">Insights</div>
-    <form method="get" action="/insights" class="month-picker">
-      <div class="standalone-field">
-        <label>Month</label>
-        <select name="month">
-          {% for m in range(1,13) %}
-            <option value="{{ m }}" {% if m == month %}selected{% endif %}>
-              {{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1] }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="standalone-field">
-        <label>Year</label>
-        <input type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:90px;">
-      </div>
-      <div class="standalone-field" style="justify-content:flex-end;">
-        <button type="submit" class="btn-save">View</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- Summary stats -->
-  <div class="insights-stats">
-    <div class="istat">
-      <div class="istat-label">Total Spent</div>
-      <div class="istat-value" style="color:var(--red)">${{ "%.2f"|format(total) }}</div>
+  <div class="section-card">
+    <div class="section-head">
+      <h2>Insights</h2>
     </div>
-    <div class="istat">
-      <div class="istat-label">Transactions</div>
-      <div class="istat-value">{{ expenses|length }}</div>
-    </div>
-    <div class="istat">
-      <div class="istat-label">Categories</div>
-      <div class="istat-value">{{ category_totals|length }}</div>
-    </div>
-    <div class="istat">
-      <div class="istat-label">Avg / Txn</div>
-      <div class="istat-value">
-        {% if expenses %}${{ "%.2f"|format(total / expenses|length) }}{% else %}—{% endif %}
-      </div>
-    </div>
-  </div>
 
-  <div class="insights-layout">
-
-    <!-- Left: chart + breakdown -->
-    <div>
-      <div class="chart-box" style="margin-bottom:12px;">
-        {% if expenses %}
-          <img src="{{ chart }}" alt="Expense breakdown">
-        {% else %}
-          <div class="empty">No expenses this month.</div>
-        {% endif %}
-      </div>
-
-      <div class="standalone-card" style="padding:0; overflow:hidden;">
-        <div class="card-header">
-          <span class="card-title">By Category</span>
-        </div>
-        <div style="padding: 12px 16px;">
-          {% if category_totals %}
-            {% for cat, amt in category_totals.items()|sort(attribute=1, reverse=true) %}
-              <div class="category-bar-row">
-                <div class="cat-bar-top">
-                  <span class="cat-bar-name">{{ cat }}</span>
-                  <span class="cat-bar-amt">${{ "%.2f"|format(amt) }} · {{ "%.1f"|format(amt / total * 100) }}%</span>
-                </div>
-                <div class="cat-bar-track">
-                  <div class="cat-bar-fill" style="width:{{ (amt / total * 100) }}%"></div>
-                </div>
-              </div>
+    <div style="padding: 18px;">
+      <form method="get" action="/insights" class="row-2" style="align-items:flex-end;">
+        <div class="field">
+          <label>Month</label>
+          <select name="month">
+            {% for m in range(1,13) %}
+              <option value="{{ m }}" {% if m == month %}selected{% endif %}>
+                {{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1] }}
+              </option>
             {% endfor %}
-          {% else %}
-            <div class="empty">No data.</div>
+          </select>
+        </div>
+        <div class="field">
+          <label>Year</label>
+          <input type="number" name="year" value="{{ year }}" min="2000" max="2100">
+        </div>
+        <button type="submit" class="btn-add" style="margin-bottom:12px;">View</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── MONTH-OVER-MONTH COMPARISON ── -->
+  <div class="section-card">
+    <div class="section-head"><h2>Month-over-Month Comparison</h2></div>
+    <div style="padding: 18px;">
+      <div class="stats-grid-4" style="margin-bottom: 18px;">
+        <div class="stat-card">
+          <div class="stat-label">This Month</div>
+          <div class="stat-value">${{ "%.2f"|format(cur_val) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Last Month</div>
+          <div class="stat-value">${{ "%.2f"|format(prev_val) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Difference</div>
+          <div class="stat-value {% if diff > 0 %}red{% elif diff < 0 %}green{% endif %}">
+            {% if diff >= 0 %}+{% endif %}${{ "%.2f"|format(diff) }}
+          </div>
+          {% if diff_pct is not none %}
+            <div class="stat-sub">
+              <span class="mom-badge {% if diff_pct > 0 %}up{% elif diff_pct < 0 %}down{% else %}flat{% endif %}">
+                {% if diff_pct > 0 %}▲{% elif diff_pct < 0 %}▼{% endif %}
+                {{ "%.1f"|format(diff_pct|abs) }}%
+              </span>
+            </div>
           {% endif %}
         </div>
+        <div class="stat-card">
+          <div class="stat-label">6-Month Avg</div>
+          <div class="stat-value">${{ "%.2f"|format(avg_6m) }}</div>
+        </div>
       </div>
-    </div>
 
-    <!-- Right: transactions table -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">All Transactions</span>
-        <span class="card-count">{{ expenses|length }}</span>
+      <div class="chart-box" style="margin-bottom: 18px;">
+        <img src="{{ mom_chart }}" alt="Month-over-month chart">
       </div>
-      {% if expenses %}
-      <div class="table-wrap" style="max-height: 560px;">
-        <table class="data-table">
-          <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr></thead>
-          <tbody>
-            {% for e in expenses %}
-            <tr>
-              <td style="color:var(--muted);font-size:12px;white-space:nowrap;">{{ e.date }}</td>
-              <td class="desc-cell">
-                {{ e.description }}
-                {% if e.is_split %}<span class="badge badge-split-you">Split</span>{% endif %}
+
+      <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border);">
+            <th style="text-align:left; padding: 10px; color: var(--muted);">Month</th>
+            <th style="text-align:right; padding: 10px; color: var(--muted);">Total Spent</th>
+            <th style="text-align:right; padding: 10px; color: var(--muted);">vs Avg</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for y, m, v in months_data %}
+            <tr style="border-bottom: 1px solid var(--border);">
+              <td style="padding: 10px;">
+                {% if loop.last %}<strong style="color: #f5a623;">{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1] }} {{ y }}</strong>
+                {% else %}{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1] }} {{ y }}{% endif %}
               </td>
-              <td><span class="badge badge-cat">{{ e.category }}</span></td>
-              <td class="amount-cell neg">-${{ "%.2f"|format(e.amount) }}</td>
+              <td style="text-align:right; padding: 10px;">${{ "%.2f"|format(v) }}</td>
+              <td style="text-align:right; padding: 10px; color: {% if v > avg_6m %}#e74c3c{% elif v < avg_6m %}#2ecc71{% else %}var(--muted){% endif %};">
+                {% if avg_6m > 0 %}{% set pct = ((v - avg_6m) / avg_6m * 100) %}{% if pct >= 0 %}+{% endif %}{{ "%.1f"|format(pct) }}%{% else %}—{% endif %}
+              </td>
             </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── PIE CHART ── -->
+  <div class="section-card">
+    <div class="section-head"><h2>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][month-1] }} {{ year }} Breakdown</h2></div>
+    <div style="padding: 18px;">
+      {% if expenses %}
+        <div style="margin-bottom:14px; font-size: 14px; color: var(--muted);">
+          Total: <strong style="color: var(--text); font-size: 16px;">${{ "%.2f"|format(total) }}</strong>
+        </div>
+        <div class="chart-box">
+          <img src="{{ chart }}" alt="Expense pie chart">
+        </div>
       {% else %}
-      <div class="empty">No expenses this month.</div>
+        <div class="empty-state">No expenses for this month.</div>
       {% endif %}
     </div>
-
   </div>
+
+  <!-- ── CATEGORY BREAKDOWN ── -->
+  {% if category_totals %}
+  <div class="section-card">
+    <div class="section-head"><h2>By Category</h2></div>
+    <div style="padding: 18px;">
+      {% for cat, amt in category_totals.items()|sort(attribute=1, reverse=true) %}
+        <div style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+            <span style="font-weight: 600;">{{ cat }}</span>
+            <span style="color: var(--muted);">${{ "%.2f"|format(amt) }} · {{ "%.1f"|format(amt/total*100) }}%</span>
+          </div>
+          <div style="height: 5px; background: var(--border); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; background: linear-gradient(90deg, #4f8ef7, #7ab3fa); border-radius: 3px; width: {{ (amt/total*100) }}%;"></div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 </body>
 </html>

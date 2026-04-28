@@ -1,4 +1,5 @@
 flask
-flask-sqlalchemy
 matplotlib
 gunicorn
+gspread
+google-auth
