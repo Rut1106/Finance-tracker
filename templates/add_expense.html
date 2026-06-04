@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Finance Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Rut Finance</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
 <header class="topbar">
-  <div class="topbar-brand">Finance Tracker</div>
+  <div class="topbar-brand"><span>Rut</span> Finance</div>
   <nav class="topbar-nav">
     <a href="/budgets">Budgets</a>
     <a href="/categories">Categories</a>
@@ -20,42 +20,52 @@
 
 <div class="page-wrap">
 
-  <!-- 1. STATS -->
+  <div class="signature-row">
+    <div class="signature-greeting">Welcome back<span class="name">, Rut</span></div>
+    <div class="signature-date">{{ today }}</div>
+  </div>
+
+  <!-- Scope toggle -->
+  <div class="scope-toggle">
+    <a href="/?scope=month" class="scope-btn {% if scope == 'month' %}active{% endif %}">{{ totals.month_name }}</a>
+    <a href="/?scope=all" class="scope-btn {% if scope == 'all' %}active{% endif %}">All Time</a>
+  </div>
+
+  <!-- 1. STATS — 2x2 GRID -->
   <div class="stats-grid-4">
-    <div class="stat-card">
-      <div class="stat-label">Balance</div>
-      <div class="stat-value">${{ "%.2f"|format(totals.balance) }}</div>
+    <div class="stat-card balance">
+      <div class="stat-label">Total Balance <span class="lifetime-tag">lifetime</span></div>
+      <div class="stat-value gold">${{ "%.2f"|format(totals.balance) }}</div>
     </div>
     <div class="stat-card income">
-      <div class="stat-label">Income</div>
+      <div class="stat-label">Income {% if scope == 'month' %}<span class="scope-tag">this month</span>{% else %}<span class="scope-tag">all time</span>{% endif %}</div>
       <div class="stat-value green">${{ "%.2f"|format(totals.income) }}</div>
     </div>
     <div class="stat-card expense">
-      <div class="stat-label">Expenses</div>
+      <div class="stat-label">Expenses {% if scope == 'month' %}<span class="scope-tag">this month</span>{% else %}<span class="scope-tag">all time</span>{% endif %}</div>
       <div class="stat-value red">${{ "%.2f"|format(totals.expenses) }}</div>
-      {% if mom.change_pct is not none %}
+      {% if scope == 'month' and mom.change_pct is not none %}
         <div class="stat-sub">
           <span class="mom-badge {% if mom.change_pct > 0 %}up{% elif mom.change_pct < 0 %}down{% else %}flat{% endif %}">
-            {% if mom.change_pct > 0 %}▲{% elif mom.change_pct < 0 %}▼{% endif %}
-            {{ "%.1f"|format(mom.change_pct|abs) }}% vs {{ mom.prev_month_name }}
+            {% if mom.change_pct > 0 %}▲{% elif mom.change_pct < 0 %}▼{% endif %}{{ "%.1f"|format(mom.change_pct|abs) }}% vs {{ mom.prev_month_name[:3] }}
           </span>
         </div>
       {% endif %}
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Splitwise Net</div>
+    <div class="stat-card split">
+      <div class="stat-label">Splitwise Net <span class="lifetime-tag">live</span></div>
       <div class="stat-value {% if totals.splitwise_net < 0 %}red{% elif totals.splitwise_net > 0 %}green{% endif %}">
         {% if totals.splitwise_net >= 0 %}+{% endif %}${{ "%.2f"|format(totals.splitwise_net) }}
       </div>
       <div class="stat-sub">
         {% if totals.splitwise_net > 0 %}They owe you
         {% elif totals.splitwise_net < 0 %}You owe them
-        {% else %}Even{% endif %}
+        {% else %}All even{% endif %}
       </div>
     </div>
   </div>
 
-  <!-- 2. ACCOUNTS -->
+  <!-- 2. ACCOUNTS — 2x2 -->
   <div class="section-card">
     <div class="section-head"><h2>Accounts</h2></div>
     <div class="accounts-row">
@@ -63,9 +73,10 @@
         <div class="acc-card {% if name == income_account %}income-acc{% elif name == expense_account %}spend-acc{% elif name == splitwise_account %}split-acc{% endif %}">
           <div class="acc-name">
             {{ name }}
-            {% if name == income_account %}<span class="acc-tag inc-tag">Income</span>{% endif %}
-            {% if name == expense_account %}<span class="acc-tag exp-tag">Spending</span>{% endif %}
-            {% if name == splitwise_account %}<span class="acc-tag spl-tag">Splitwise</span>{% endif %}
+            {% if name == income_account %}<span class="acc-tag inc-tag">Income</span>
+            {% elif name == expense_account %}<span class="acc-tag exp-tag">Spend</span>
+            {% elif name == splitwise_account %}<span class="acc-tag spl-tag">Split</span>
+            {% endif %}
           </div>
           <div class="acc-balance">${{ "%.2f"|format(balance) }}</div>
         </div>
@@ -75,7 +86,7 @@
 
   <!-- 3. ADD TRANSACTION -->
   <div class="section-card">
-    <div class="section-head"><h2>Add Transaction</h2></div>
+    <div class="section-head"><h2>New Entry <span class="accent">— Rut's ledger</span></h2></div>
 
     <div class="add-tabs">
       <button class="add-tab active" onclick="switchAdd('exp', this)" type="button">Expense</button>
@@ -185,49 +196,33 @@
           </div>
         </div>
         <div class="field">
-          <label>Note (optional)</label>
+          <label>Note</label>
           <input type="text" name="note" placeholder="e.g. Salary moved to spending">
         </div>
-        <button type="submit" class="btn-add grey">Record Transfer</button>
+        <button type="submit" class="btn-add gold">Record Transfer</button>
       </form>
     </div>
   </div>
 
   <!-- 4. TRANSACTIONS -->
   <div class="section-card">
-    <div class="section-head"><h2>Transactions</h2></div>
+    <div class="section-head"><h2>Activity Log</h2></div>
 
     <div class="txn-tabs">
-      <button class="txn-tab active" onclick="switchTxn('all', this)" type="button">All</button>
+      <button class="txn-tab active" onclick="switchTxn('all', this)" type="button">All Activity</button>
       <button class="txn-tab" onclick="switchTxn('search', this)" type="button">Search</button>
     </div>
 
     <!-- ALL TAB -->
     <div id="txn-all" class="txn-pane active">
-
-      {% set all_txns = [] %}
-      {% for e in expenses %}
-        {% set _ = all_txns.append({"type":"expense","date":e.date,"data":e}) %}
-      {% endfor %}
-      {% for i in incomes %}
-        {% set _ = all_txns.append({"type":"income","date":i.date,"data":i}) %}
-      {% endfor %}
-      {% for tr in transfers %}
-        {% set _ = all_txns.append({"type":"transfer","date":tr.date,"data":tr}) %}
-      {% endfor %}
-      {% for s in splits %}
-        {% set _ = all_txns.append({"type":"split","date":s.date,"data":s}) %}
-      {% endfor %}
-      {% set sorted_txns = all_txns | sort(attribute='date', reverse=True) %}
-
-      {% if sorted_txns %}
+      {% if all_txns %}
         <div class="txn-list">
-          {% for t in sorted_txns %}
+          {% for t in all_txns %}
             {% include "_txn_row.html" %}
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty-state">No transactions yet.</div>
+        <div class="empty-state">No activity yet — start by adding your first entry above.</div>
       {% endif %}
     </div>
 
@@ -258,11 +253,11 @@
 
         <div class="row-2">
           <div class="field">
-            <label>From Date</label>
+            <label>From</label>
             <input type="date" name="filter_from" value="{{ filter_from }}">
           </div>
           <div class="field">
-            <label>To Date</label>
+            <label>To</label>
             <input type="date" name="filter_to" value="{{ filter_to }}">
           </div>
         </div>
@@ -289,10 +284,10 @@
 
       {% if has_filters %}
         <div class="results-header">
-          {% if search_type == 'expense' %}Expenses ({{ filtered_expenses|length }})
-          {% elif search_type == 'income' %}Income ({{ filtered_incomes|length }})
-          {% elif search_type == 'transfer' %}Transfers ({{ filtered_transfers|length }})
-          {% elif search_type == 'split' %}Splitwise ({{ filtered_splits|length }})
+          {% if search_type == 'expense' %}{{ filtered_expenses|length }} Expenses
+          {% elif search_type == 'income' %}{{ filtered_incomes|length }} Income entries
+          {% elif search_type == 'transfer' %}{{ filtered_transfers|length }} Transfers
+          {% elif search_type == 'split' %}{{ filtered_splits|length }} Splitwise entries
           {% endif %}
         </div>
 
@@ -335,6 +330,8 @@
       {% endif %}
     </div>
   </div>
+
+  <div class="foot-mark">Built by <span class="rut-mark">Rut</span> · Own your money</div>
 
 </div>
 

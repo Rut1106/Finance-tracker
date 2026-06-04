@@ -1,80 +1,58 @@
-<!-- <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Manage Accounts</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <div class="container">
-
-      <div class="header">
-        <h1>Manage Account Balances</h1>
-        <a href="/" class="btn btn-secondary">Back to Dashboard</a>
-      </div>
-
-      <div class="card">
-        <h2>Set Opening Balances</h2>
-        <form method="post">
-          <div class="form-grid">
-            {% for name, balance in accounts.items() %}
-              <div class="form-group">
-                <label for="{{ name }}">{{ name }}</label>
-                <input type="number" id="{{ name }}" name="{{ name }}" min="0" step="0.01" value="{{ balance }}" required>
-              </div>
-            {% endfor %}
-            <div class="form-group full-width" style="justify-content: flex-end; align-items: flex-end;">
-              <button type="submit" class="btn btn-primary">Save Balances</button>
-            </div>
-          </div>
-        </form>
-      </div>
-
-    </div>
-  </body>
-</html> -->
-
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Accounts — Finance Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Accounts — Rut Finance</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-<header class="topbar">
-  <div class="topbar-brand">Finance Tracker</div>
-  <nav class="topbar-nav">
+
+<div class="header">
+  <h1>Rut Finance</h1>
+  <div class="header-actions">
+    <a href="/">Dashboard</a>
     <a href="/budgets">Budgets</a>
     <a href="/categories">Categories</a>
     <a href="/insights">Insights</a>
-    <a href="/">Dashboard</a>
-  </nav>
-</header>
+  </div>
+</div>
 
 <div class="page-wrap">
-  <div class="page-header">
-    <div class="page-title">Account Opening Balances</div>
+  <div class="signature-row">
+    <div class="signature-greeting">Account ledger<span class="name">, Rut</span></div>
   </div>
 
   <div class="standalone-card">
-    <h2>Set Opening Balances</h2>
+    <h2>Opening Balances</h2>
+    <p style="color: var(--muted); font-size: 13px; margin-bottom: 18px;">
+      Starting balance for each account. Account 4 should match your current Splitwise balance.
+    </p>
     <form method="post" action="/accounts">
-      <div class="form-grid-2">
+      <div class="accounts-grid" style="margin-bottom: 18px;">
         {% for name, balance in accounts.items() %}
-          <div class="standalone-field">
+          <div class="form-group">
             <label>{{ name }}</label>
             <input type="number" name="{{ name }}" min="0" step="0.01" value="{{ balance }}" required>
           </div>
         {% endfor %}
       </div>
-      <button type="submit" class="btn-save" style="margin-top:16px;">Save Balances</button>
+      <button type="submit" class="btn">Save Balances</button>
     </form>
-    <p style="font-size:11px; color:var(--muted); margin-top:12px;">
-      Account 3 = Income (salary deposits here) · Account 1 = Spending · Account 4 = Splitwise ledger.<br>
-      Set Account 4 opening balance to your current Splitwise balance to keep them in sync.
-    </p>
   </div>
+
+  <div class="standalone-card">
+    <h2>Account Roles</h2>
+    <table>
+      <tr><th>Account</th><th>Role</th></tr>
+      <tr><td>Account 1</td><td>Spending — money goes out from here</td></tr>
+      <tr><td>Account 2</td><td>General purpose</td></tr>
+      <tr><td>Account 3</td><td>Income landing — salary deposits here</td></tr>
+      <tr><td>Account 4</td><td>Splitwise virtual ledger — tracks money owed</td></tr>
+    </table>
+  </div>
+
+  <div class="foot-mark">Built by <span class="rut-mark">Rut</span> · Own your money</div>
 </div>
 </body>
 </html>

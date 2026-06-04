@@ -149,6 +149,14 @@ def find_row_by_id(rows, row_id):
     return None
 
 
+def safe_id(r):
+    """Safely return the id as an int for sorting."""
+    try:
+        return int(r.get("id", 0))
+    except:
+        return 0
+
+
 # ---------- Init sheets ----------
 def init_sheets():
     global _sh_cache
@@ -229,14 +237,49 @@ def get_account_balances():
     return balances
 
 
-def get_totals():
+def get_totals(scope="month"):
+    """
+    Returns income and expense totals scoped to:
+      - "month"   : current calendar month only (default)
+      - "all"     : all time
+    Balance is always all-time (lifetime account snapshot makes sense).
+    Splitwise net is always live (current outstanding).
+    """
     data     = get_cached_data()
     balances = get_account_balances()
     opening  = get_opening_balances()
 
-    real_expense  = sum(float(e["amount"] or 0) for e in data["expenses"] if str(e["is_split"]).lower() != "true")
-    real_expense += sum(float(s["your_share"] or 0) for s in data["splits"])
+    today = date.today()
 
+    def in_scope(d_str):
+        if scope == "all":
+            return True
+        try:
+            d = datetime.strptime(d_str, "%Y-%m-%d")
+            return d.year == today.year and d.month == today.month
+        except:
+            return False
+
+    # Income within scope
+    income_total = sum(
+        float(i["amount"] or 0)
+        for i in data["incomes"]
+        if in_scope(i.get("date", ""))
+    )
+
+    # Real expense within scope (non-split expenses + your share of splits)
+    real_expense = sum(
+        float(e["amount"] or 0)
+        for e in data["expenses"]
+        if str(e["is_split"]).lower() != "true" and in_scope(e.get("date", ""))
+    )
+    real_expense += sum(
+        float(s["your_share"] or 0)
+        for s in data["splits"]
+        if in_scope(s.get("date", ""))
+    )
+
+    # Splitwise net is always live (pending only, regardless of scope)
     splitwise_net = 0
     for s in data["splits"]:
         if s["status"] == "pending":
@@ -247,10 +290,12 @@ def get_totals():
 
     return {
         "opening":       sum(opening.values()),
-        "income":        sum(float(i["amount"] or 0) for i in data["incomes"]),
+        "income":        income_total,
         "expenses":      real_expense,
         "splitwise_net": splitwise_net,
-        "balance":       sum(balances.values()),
+        "balance":       sum(balances.values()),  # always lifetime
+        "scope":         scope,
+        "month_name":    today.strftime("%B %Y"),
     }
 
 
@@ -322,6 +367,7 @@ def home():
     filter_from     = request.args.get("filter_from", "")
     filter_to       = request.args.get("filter_to", "")
     search_type     = request.args.get("search_type", "expense")
+    scope           = request.args.get("scope", "month")  # month | all
 
     data = get_cached_data()
 
@@ -339,7 +385,8 @@ def home():
                 if search not in blob:
                     continue
             out.append(it)
-        return out
+        # newest first by id
+        return sorted(out, key=safe_id, reverse=True)
 
     filtered_expenses  = filter_items(data["expenses"],  ["description", "category", "account"])
     filtered_incomes   = filter_items(data["incomes"],   ["description", "category", "account"])
@@ -348,18 +395,34 @@ def home():
 
     has_filters = bool(search or filter_category or filter_from or filter_to)
 
+    # Build a unified, commit-order sorted list for All tab
+    # Each entry tagged with its original list and id so we sort correctly
+    all_txns = []
+    for e in data["expenses"]:
+        all_txns.append({"type": "expense", "id": safe_id(e), "data": e})
+    for i in data["incomes"]:
+        all_txns.append({"type": "income", "id": safe_id(i), "data": i})
+    for tr in data["transfers"]:
+        all_txns.append({"type": "transfer", "id": safe_id(tr), "data": tr})
+    for s in data["splits"]:
+        all_txns.append({"type": "split", "id": safe_id(s), "data": s})
+
+    # Sort by date descending, then by id descending as tiebreaker (within same date, newer commits first)
+    all_txns.sort(key=lambda x: (x["data"].get("date", ""), x["id"]), reverse=True)
+
     return render_template(
         "add_expense.html",
-        expenses=list(reversed(data["expenses"])),
-        incomes=list(reversed(data["incomes"])),
-        transfers=list(reversed(data["transfers"])),
-        splits=list(reversed(data["splits"])),
+        all_txns=all_txns,
+        expenses=sorted(data["expenses"],  key=safe_id, reverse=True),
+        incomes=sorted(data["incomes"],    key=safe_id, reverse=True),
+        transfers=sorted(data["transfers"], key=safe_id, reverse=True),
+        splits=sorted(data["splits"],      key=safe_id, reverse=True),
         today=today_str,
         categories=get_categories("expense"),
         income_categories=get_categories("income"),
         accounts=get_account_balances(),
         account_names=list(get_opening_balances().keys()),
-        totals=get_totals(),
+        totals=get_totals(scope=scope),
         income_account=INCOME_ACCOUNT,
         expense_account=EXPENSE_ACCOUNT,
         splitwise_account=SPLITWISE_ACCOUNT,
@@ -375,6 +438,7 @@ def home():
         filtered_incomes=filtered_incomes,
         filtered_transfers=filtered_transfers,
         filtered_splits=filtered_splits,
+        scope=scope,
     )
 
 
@@ -788,20 +852,21 @@ def insights():
     fig = Figure(figsize=(7, 5))
     ax  = fig.add_subplot(1, 1, 1)
     if category_totals:
-        colors = ["#4f8ef7","#34c97b","#f5a623","#f05252","#9b6ef3","#0987a0","#dd6b20","#319795"]
+        # Money/prosperity color palette - emerald, gold for cream theme
+        colors = ["#2f7d52","#b8923a","#245e3d","#c9a449","#3a9461","#8f6f25","#5ba87a","#a78a3f"]
         ax.pie(
             list(category_totals.values()),
             labels=list(category_totals.keys()),
             autopct="%1.1f%%",
             colors=colors[:len(category_totals)],
             startangle=90,
-            wedgeprops={"edgecolor": "#0f1117", "linewidth": 2},
+            wedgeprops={"edgecolor": "#faf6ec", "linewidth": 2},
         )
-        fig.patch.set_facecolor("#181c27")
-        ax.set_facecolor("#181c27")
+        fig.patch.set_facecolor("#f5f1e8")
+        ax.set_facecolor("#f5f1e8")
         for text in ax.texts:
-            text.set_color("#e8eaf0")
-    ax.set_title(f"Expenses — {month}/{year}", fontsize=14, fontweight="bold", color="#e8eaf0")
+            text.set_color("#2c3a30")
+    ax.set_title(f"Expenses — {month}/{year}", fontsize=14, fontweight="bold", color="#8f6f25")
 
     png   = io.BytesIO()
     FigureCanvas(fig).print_png(png)
@@ -834,23 +899,23 @@ def insights():
 
     fig2 = Figure(figsize=(8, 4))
     ax2  = fig2.add_subplot(1, 1, 1)
-    bar_colors = ["#4f8ef7"] * 5 + ["#f5a623"]
-    bars = ax2.bar(labels, values, color=bar_colors, edgecolor="#0f1117", linewidth=1.5)
+    bar_colors = ["#2f7d52"] * 5 + ["#b8923a"]  # gold for current month
+    bars = ax2.bar(labels, values, color=bar_colors, edgecolor="#faf6ec", linewidth=1.5)
 
-    fig2.patch.set_facecolor("#181c27")
-    ax2.set_facecolor("#181c27")
-    ax2.tick_params(colors="#e8eaf0")
+    fig2.patch.set_facecolor("#f5f1e8")
+    ax2.set_facecolor("#f5f1e8")
+    ax2.tick_params(colors="#2c3a30")
     for spine in ax2.spines.values():
-        spine.set_color("#2a2f42")
-    ax2.set_title("Monthly Spending — Last 6 Months", fontsize=13, fontweight="bold", color="#e8eaf0")
-    ax2.set_ylabel("Amount ($)", color="#e8eaf0")
-    ax2.grid(axis="y", color="#2a2f42", linestyle="--", linewidth=0.5, alpha=0.7)
+        spine.set_color("#ddd4be")
+    ax2.set_title("Monthly Spending — Last 6 Months", fontsize=13, fontweight="bold", color="#8f6f25")
+    ax2.set_ylabel("Amount ($)", color="#2c3a30")
+    ax2.grid(axis="y", color="#ddd4be", linestyle="--", linewidth=0.5, alpha=0.7)
 
     max_val = max(values) if values else 0
     for bar, v in zip(bars, values):
         if v > 0:
             ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max_val*0.02,
-                     f"${v:.0f}", ha="center", color="#e8eaf0", fontsize=10, fontweight="bold")
+                     f"${v:.0f}", ha="center", color="#2c3a30", fontsize=10, fontweight="bold")
 
     fig2.tight_layout()
     png2 = io.BytesIO()
@@ -862,6 +927,218 @@ def insights():
     prev_val = values[-2] if len(values) > 1 else 0
     diff     = cur_val - prev_val
     diff_pct = (diff / prev_val * 100) if prev_val > 0 else None
+
+    # ════════════════════════════════════════════════════
+    # MEANINGFUL INSIGHTS for the selected month
+    # ════════════════════════════════════════════════════
+    today = date.today()
+    is_current_month = (year == today.year and month == today.month)
+
+    # Days in the selected month
+    from calendar import monthrange
+    days_in_month = monthrange(year, month)[1]
+
+    # Days elapsed (current month) or full month (past months)
+    if is_current_month:
+        days_elapsed = today.day
+    else:
+        days_elapsed = days_in_month
+
+    # Average daily spend
+    avg_daily = total / days_elapsed if days_elapsed > 0 else 0
+
+    # Projected total (if current month)
+    projected = avg_daily * days_in_month if is_current_month else total
+
+    # Income for selected month
+    month_income = sum(
+        float(i["amount"] or 0)
+        for i in data["incomes"]
+        if i.get("date", "").startswith(f"{year:04d}-{month:02d}")
+    )
+
+    # Savings rate
+    savings_rate = ((month_income - total) / month_income * 100) if month_income > 0 else None
+    net_saved = month_income - total
+
+    # Top category
+    top_cat = None
+    top_cat_amt = 0
+    if category_totals:
+        top_cat = max(category_totals, key=category_totals.get)
+        top_cat_amt = category_totals[top_cat]
+
+    # Top 3 individual expenses
+    top_expenses = sorted(month_expenses, key=lambda x: x["amount"], reverse=True)[:3]
+
+    # Days with zero spending
+    days_with_spend = set()
+    for e in month_expenses:
+        days_with_spend.add(e["date"])
+    zero_spend_days = days_elapsed - len(days_with_spend)
+
+    # Spending pace vs previous month (only meaningful for current month)
+    pace_msg = None
+    pace_status = None  # "ahead" / "behind" / "ontrack"
+    if is_current_month and prev_val > 0:
+        # What did previous month look like at this same day-of-month?
+        prev_month_year = year if month > 1 else year - 1
+        prev_month_num  = month - 1 if month > 1 else 12
+        prev_at_this_day = 0
+        for e in data["expenses"]:
+            try:
+                d = datetime.strptime(e["date"], "%Y-%m-%d")
+            except:
+                continue
+            if d.year == prev_month_year and d.month == prev_month_num and d.day <= today.day:
+                prev_at_this_day += float(e["your_share"] or 0) if str(e["is_split"]).lower() == "true" else float(e["amount"] or 0)
+
+        if prev_at_this_day > 0:
+            pace_diff_pct = ((total - prev_at_this_day) / prev_at_this_day * 100)
+            if pace_diff_pct > 5:
+                pace_status = "ahead"
+                pace_msg = f"You're spending {pace_diff_pct:.0f}% more than last month at this point"
+            elif pace_diff_pct < -5:
+                pace_status = "behind"
+                pace_msg = f"You're spending {abs(pace_diff_pct):.0f}% less than last month — good discipline"
+            else:
+                pace_status = "ontrack"
+                pace_msg = "On pace with last month"
+
+    # Day-of-week analysis
+    dow_totals = [0, 0, 0, 0, 0, 0, 0]  # Mon-Sun
+    for e in month_expenses:
+        try:
+            d = datetime.strptime(e["date"], "%Y-%m-%d")
+            dow_totals[d.weekday()] += e["amount"]
+        except:
+            continue
+
+    dow_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    worst_dow_idx = dow_totals.index(max(dow_totals)) if max(dow_totals) > 0 else None
+    worst_dow_name = dow_names[worst_dow_idx] if worst_dow_idx is not None else None
+    worst_dow_amt = dow_totals[worst_dow_idx] if worst_dow_idx is not None else 0
+
+    # Largest single expense
+    largest_expense = max(month_expenses, key=lambda x: x["amount"]) if month_expenses else None
+
+    insights_data = {
+        "month_name":       datetime(year, month, 1).strftime("%B %Y"),
+        "is_current_month": is_current_month,
+        "days_elapsed":     days_elapsed,
+        "days_in_month":    days_in_month,
+        "avg_daily":        avg_daily,
+        "projected":        projected,
+        "month_income":     month_income,
+        "savings_rate":     savings_rate,
+        "net_saved":        net_saved,
+        "top_cat":          top_cat,
+        "top_cat_amt":      top_cat_amt,
+        "top_cat_pct":      (top_cat_amt / total * 100) if total > 0 else 0,
+        "top_expenses":     top_expenses,
+        "zero_spend_days":  zero_spend_days,
+        "txn_count":        len(month_expenses),
+        "pace_msg":         pace_msg,
+        "pace_status":      pace_status,
+        "worst_dow":        worst_dow_name,
+        "worst_dow_amt":    worst_dow_amt,
+        "largest_expense":  largest_expense,
+        "dow_totals":       list(zip(dow_names, dow_totals)),
+    }
+
+    # ════════════════════════════════════════════════════
+    # MONTHLY SNAPSHOTS — wealth journey across months
+    # Opening balance + income + expenses + transfers (net effect) = closing balance
+    # ════════════════════════════════════════════════════
+    opening = get_opening_balances()
+    opening_total = sum(opening.values())
+
+    def parse_date(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except:
+            return None
+
+    # Build a sorted list of all activity (expenses + incomes + transfers + splits)
+    # tagged with their date and net effect on total balance.
+    # Note: transfers don't change total balance (money moves between own accounts).
+    # Splits affect the Account 4 virtual ledger but the net effect on total balance
+    # depends on direction — for snapshots we just count real cash flow.
+
+    # Find earliest and latest dates in data
+    all_dates = []
+    for e in data["expenses"]:
+        d = parse_date(e.get("date", ""))
+        if d: all_dates.append(d)
+    for i in data["incomes"]:
+        d = parse_date(i.get("date", ""))
+        if d: all_dates.append(d)
+
+    snapshots = []
+    if all_dates:
+        first_date = min(all_dates)
+        last_date  = max(date.today(), max(all_dates))
+
+        # Iterate month by month from first activity to current month
+        cur_y, cur_m = first_date.year, first_date.month
+        end_y, end_m = last_date.year, last_date.month
+
+        running_balance = opening_total
+
+        while (cur_y, cur_m) <= (end_y, end_m):
+            # Compute this month's flows
+            month_inc = 0.0
+            month_exp = 0.0  # real expenses (non-split + your_share of splits)
+            month_split_net = 0.0  # net change to Account 4
+
+            for i in data["incomes"]:
+                d = parse_date(i.get("date", ""))
+                if d and d.year == cur_y and d.month == cur_m:
+                    month_inc += float(i["amount"] or 0)
+
+            for e in data["expenses"]:
+                d = parse_date(e.get("date", ""))
+                if d and d.year == cur_y and d.month == cur_m:
+                    if str(e["is_split"]).lower() == "true":
+                        continue  # counted via splits
+                    month_exp += float(e["amount"] or 0)
+
+            for s in data["splits"]:
+                d = parse_date(s.get("date", ""))
+                if d and d.year == cur_y and d.month == cur_m:
+                    month_exp += float(s["your_share"] or 0)
+                    if s["direction"] == "you_paid":
+                        month_split_net += float(s["other_share"] or 0)
+                    else:
+                        month_split_net -= float(s["your_share"] or 0)
+
+            opening_for_month = running_balance
+            net_change = month_inc - month_exp + month_split_net
+            closing_for_month = opening_for_month + net_change
+
+            snapshots.append({
+                "year": cur_y,
+                "month": cur_m,
+                "label": datetime(cur_y, cur_m, 1).strftime("%b %Y"),
+                "opening": opening_for_month,
+                "income": month_inc,
+                "expense": month_exp,
+                "split_net": month_split_net,
+                "net_change": net_change,
+                "closing": closing_for_month,
+                "is_current": (cur_y == date.today().year and cur_m == date.today().month),
+            })
+
+            running_balance = closing_for_month
+
+            # Advance to next month
+            cur_m += 1
+            if cur_m > 12:
+                cur_m = 1
+                cur_y += 1
+
+        # Most recent first
+        snapshots.reverse()
 
     return render_template(
         "insights.html",
@@ -876,6 +1153,8 @@ def insights():
         prev_val=prev_val,
         diff=diff,
         diff_pct=diff_pct,
+        ins=insights_data,
+        snapshots=snapshots,
     )
 
 

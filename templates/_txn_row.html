@@ -1,4 +1,4 @@
-{# Renders a single transaction row with inline edit. Expects `t` dict with .type and .data #}
+{# Transaction row with inline edit. Expects `t` dict with .type and .data #}
 
 {% if t.type == "expense" %}
   {% set uid = "exp-" ~ t.data.id %}
@@ -20,10 +20,10 @@
       </div>
     </div>
     <div class="txn-right">
-      <div class="txn-amt neg">-${{ "%.2f"|format(t.data.amount) }}</div>
+      <div class="txn-amt neg">−${{ "%.2f"|format(t.data.amount) }}</div>
       <div class="txn-actions">
         {% if t.data.is_split %}
-          <span class="act-link locked">locked</span>
+          <span class="act-link locked">linked</span>
         {% else %}
           <a href="javascript:void(0)" onclick="toggleEdit('{{ uid }}')" class="act-link">edit</a>
           <a href="/delete/{{ t.data.id }}" class="act-link del">del</a>
@@ -117,7 +117,7 @@
 
 {% elif t.type == "transfer" %}
   <div class="txn-row">
-    <div class="txn-icon tr-i">↔</div>
+    <div class="txn-icon tr-i">⇄</div>
     <div class="txn-body">
       <div class="txn-title">
         {{ t.data.from_acc }} → {{ t.data.to_acc }}
@@ -132,7 +132,7 @@
       <div class="txn-amt neutral">${{ "%.2f"|format(t.data.amount) }}</div>
       <div class="txn-actions">
         {% if t.data.is_settlement %}
-          <span class="act-link locked">locked</span>
+          <span class="act-link locked">auto</span>
         {% else %}
           <a href="/delete_transfer/{{ t.data.id }}" class="act-link del">del</a>
         {% endif %}
@@ -143,7 +143,7 @@
 {% elif t.type == "split" %}
   {% set uid = "spl-" ~ t.data.id %}
   <div class="txn-row" id="view-{{ uid }}">
-    <div class="txn-icon sp-i">⚡</div>
+    <div class="txn-icon sp-i">◈</div>
     <div class="txn-body">
       <div class="txn-title">
         {{ t.data.description }}
@@ -161,7 +161,7 @@
         {% else %}
           <span class="badge badge-them">They paid</span>
         {% endif %}
-        <span>Total ${{ "%.2f"|format(t.data.total) }} · Your share ${{ "%.2f"|format(t.data.your_share) }}</span>
+        <span>Total ${{ "%.2f"|format(t.data.total) }} · Yours ${{ "%.2f"|format(t.data.your_share) }}</span>
       </div>
       {% if t.data.status == "pending" %}
         <form method="post" action="/settle_split/{{ t.data.id }}" class="settle-inline">
@@ -176,7 +176,7 @@
     </div>
     <div class="txn-right">
       <div class="txn-amt {% if t.data.direction == 'you_paid' %}pos{% else %}neg{% endif %}">
-        {% if t.data.direction == "you_paid" %}+${{ "%.2f"|format(t.data.other_share) }}{% else %}-${{ "%.2f"|format(t.data.your_share) }}{% endif %}
+        {% if t.data.direction == "you_paid" %}+${{ "%.2f"|format(t.data.other_share) }}{% else %}−${{ "%.2f"|format(t.data.your_share) }}{% endif %}
       </div>
       <div class="txn-actions">
         <a href="javascript:void(0)" onclick="toggleEdit('{{ uid }}')" class="act-link">edit</a>
@@ -225,7 +225,7 @@
         </select>
       </div>
       <div class="edit-actions">
-        <button type="submit" class="btn-add">Save</button>
+        <button type="submit" class="btn-add gold">Save</button>
         <button type="button" class="btn-add grey" onclick="toggleEdit('{{ uid }}')">Cancel</button>
       </div>
     </form>
