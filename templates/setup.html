@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Fresh start · Rut Finance{% endblock %}
+{% block body %}
+<h1 class="page-h">Fresh start, <em class="gold">Rut</em></h1>
+<p class="lead">Open your bank apps and type what each account has <b>right now</b>. Tracking starts today; your old sheet stays as an archive.</p>
+
+<form method="post" class="card pad">
+  {% for a in accounts_list %}
+    <div class="set-row">
+      <label>{{ a }} · {{ roles[a] }}<input type="text" name="label_{{ a }}" placeholder="{{ roles[a] }} (e.g. Chase)"></label>
+      <label>Balance today<input type="number" step="0.01" name="opening_{{ a }}" inputmode="decimal" placeholder="0.00"></label>
+    </div>
+  {% endfor %}
+  <p class="hint">{{ roles['Account 4'] }}: your total on the Splitwise app — positive if friends owe you, negative if you owe them.</p>
+  <button class="btn wide">Start tracking</button>
+</form>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Activity · Rut Finance{% endblock %}
+{% block body %}
+<h1 class="page-h">Activity</h1>
+
+<form method="get" class="card filters">
+  <div class="seg">
+    {% for val, name in [('', 'All'), ('expense', 'Spend'), ('income', 'Income'), ('transfer', 'Moves'), ('split', 'Splits')] %}
+      <label class="{% if kind == val %}on{% endif %}"><input type="radio" name="kind" value="{{ val }}" {% if kind == val %}checked{% endif %} onchange="this.form.submit()">{{ name }}</label>
+    {% endfor %}
+  </div>
+  <div class="filter-grid">
+    <label>From<input type="date" name="from" value="{{ frm }}"></label>
+    <label>To<input type="date" name="to" value="{{ to }}"></label>
+    <label>Category
+      <select name="cat"><option value="">Any</option>
+        {% for c in expense_cats + ['Untracked'] + income_cats %}<option {% if c == cat %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Search<input type="search" name="q" value="{{ q }}" placeholder="e.g. uber"></label>
+  </div>
+  <div class="filter-actions">
+    <button class="btn">Apply</button>
+    {% if kind or q or frm or to or cat %}<a href="/activity" class="btn-text">Clear</a>{% endif %}
+  </div>
+</form>
+
+<div class="totals">
+  <span>{{ rows|length }} entries</span>
+  {% if spend %}<span class="red">Spent {{ spend|usd }}</span>{% endif %}
+  {% if income %}<span class="green">In {{ income|usd }}</span>{% endif %}
+</div>
+
+<section class="card">
+  {% for r in rows %}
+    {% include "_row.html" %}
+  {% else %}
+    <div class="empty">Nothing matches.</div>
+  {% endfor %}
+</section>
+{% endblock %}

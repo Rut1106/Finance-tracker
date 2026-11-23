@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f1e8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Rut Finance">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-180.png') }}">
+  <link rel="icon" href="{{ url_for('static', filename='icon-180.png') }}">
+  <title>{% block title %}Rut Finance{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2">
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand"><span class="gem">◈</span> <em>Rut</em> Finance</a>
+    <nav class="topnav">
+      <a href="/" class="{% if request.endpoint == 'home' %}on{% endif %}">Home</a>
+      <a href="/insights" class="{% if request.endpoint == 'insights' %}on{% endif %}">Insights</a>
+      <a href="/activity" class="{% if request.endpoint == 'activity' %}on{% endif %}">Activity</a>
+      <a href="/check" class="{% if request.endpoint == 'check' %}on{% endif %}">Check</a>
+      <a href="/settings" class="{% if request.endpoint == 'settings' %}on{% endif %}">Settings</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        {% if cat.startswith('ok:') %}
+          <div class="toast ok">
+            <span class="toast-msg">✓ {{ msg }}</span>
+            <form method="post" action="/undo/{{ cat[3:] }}"><button class="toast-undo">Undo</button></form>
+          </div>
+        {% else %}
+          <div class="toast {{ 'err' if cat == 'error' else 'info' }}"><span class="toast-msg">{{ msg }}</span></div>
+        {% endif %}
+      {% endfor %}
+    {% endwith %}
+
+    {% block body %}{% endblock %}
+
+    <div class="foot">Built by <em>Rut</em> · Own your money</div>
+  </main>
+
+  <nav class="tabbar">
+    <a href="/" class="{% if request.endpoint == 'home' %}on{% endif %}"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Home
+      {% if inbox_count %}<b class="dot">{{ inbox_count }}</b>{% endif %}</a>
+    <a href="/insights" class="{% if request.endpoint == 'insights' %}on{% endif %}"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Insights</a>
+    <a href="/activity" class="{% if request.endpoint == 'activity' %}on{% endif %}"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Activity</a>
+    <a href="/check" class="{% if request.endpoint == 'check' %}on{% endif %}"><svg viewBox="0 0 24 24"><path d="M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0zM8 21h8"/></svg>Check</a>
+    <a href="/settings" class="{% if request.endpoint == 'settings' %}on{% endif %}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</a>
+  </nav>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Balance check · Rut Finance{% endblock %}
+{% block body %}
+<h1 class="page-h">Balance check</h1>
+<p class="lead">Open your bank apps and type what each account really shows. Anything that doesn't match gets logged as <b>Untracked</b>, so your numbers stay true even when you miss entries. Leave a box empty to skip it.</p>
+
+<form method="post" class="card pad">
+  {% for a in accounts_list %}
+    <div class="chk">
+      <div>
+        <div class="chk-name">{{ labels[a] }} <small>{{ a }}</small></div>
+        <div class="chk-app">App says <b class="mono">{{ bal[a]|usd }}</b></div>
+      </div>
+      <input type="number" step="0.01" name="{{ a }}" inputmode="decimal" placeholder="{{ '%.2f'|format(bal[a]) }}">
+    </div>
+  {% endfor %}
+  <p class="hint">For {{ labels['Account 4'] }}, use the total balance on the Splitwise app (positive if friends owe you).</p>
+  <button class="btn wide">Save check</button>
+</form>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Settings · Rut Finance{% endblock %}
+{% block body %}
+<h1 class="page-h">Settings</h1>
+
+<!-- ACCOUNTS -->
+<section class="card pad" id="accounts">
+  <h2>Accounts</h2>
+  <p class="hint">Tracking since <b>{{ start.strftime('%b %d, %Y') if start else '—' }}</b>. Give each account its real name (e.g. "Chase Checking").</p>
+  <form method="post" action="/settings/accounts">
+    {% for a in accounts_list %}
+      <div class="set-row">
+        <label>{{ a }} · {{ roles[a] }}<input type="text" name="label_{{ a }}" value="{{ labels[a] if labels[a] != roles[a] else '' }}" placeholder="{{ roles[a] }}"></label>
+        <label>Starting balance<input type="number" step="0.01" name="opening_{{ a }}" value="{{ '%.2f'|format(opening[a]) }}" inputmode="decimal"></label>
+      </div>
+    {% endfor %}
+    <button class="btn">Save accounts</button>
+  </form>
+</section>
+
+<!-- CARDS -->
+<section class="card pad" id="cards">
+  <h2>Apple Pay cards</h2>
+  <p class="hint">Apple Pay sends the card's name. Tell the app which account each card pays from. Anything unmatched goes to {{ labels['Account 1'] }}.</p>
+  {% for c in cards %}
+    <div class="list-row"><span>Card name has "<b>{{ c.match }}</b>" → {{ labels[c.account] }}</span>
+      <form method="post" action="/settings/cards/{{ c.match|urlencode }}/delete"><button class="x">✕</button></form></div>
+  {% endfor %}
+  <form method="post" action="/settings/card" class="inline-form">
+    <input type="text" name="match" placeholder="e.g. Discover" required>
+    <select name="account">{% for a in accounts_list %}<option value="{{ a }}">{{ labels[a] }}</option>{% endfor %}</select>
+    <button class="btn">Add</button>
+  </form>
+</section>
+
+<!-- RECURRING -->
+<section class="card pad" id="recurring">
+  <h2>Recurring</h2>
+  <p class="hint">Posts by itself on its day each month. "Ask me" puts it in the inbox so you can fix the amount (good for paychecks that change).</p>
+  {% for r in recurring %}
+    <div class="list-row">
+      <span><b>{{ r.note }}</b> · {{ r.amount|usd }} · day {{ r.day }} ·
+        {% if r.kind == 'transfer' %}{{ labels[r.account] }} → {{ labels[r.to_account] }}{% else %}{{ r.kind }} · {{ labels[r.account] }}{% endif %}
+        · {{ 'auto' if r.auto == '1' else 'ask me' }}</span>
+      <form method="post" action="/settings/recurring/{{ r.id }}/delete"><button class="x">✕</button></form>
+    </div>
+  {% endfor %}
+  <form method="post" action="/settings/recurring" class="rec-form">
+    <label>Type<select name="kind" id="rec-kind" onchange="recKind()">
+      <option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option></select></label>
+    <label>Name<input type="text" name="note" placeholder="Rent"></label>
+    <label>Amount<input type="number" step="0.01" name="amount" inputmode="decimal" required></label>
+    <label>Day of month<input type="number" name="day" min="1" max="31" value="1" inputmode="numeric"></label>
+    <label class="rec-cat">Category<select name="category">{% for c in expense_cats + income_cats %}<option>{{ c }}</option>{% endfor %}</select></label>
+    <label>From / into<select name="account"><option value="">Default</option>{% for a in accounts_list %}<option value="{{ a }}">{{ labels[a] }}</option>{% endfor %}</select></label>
+    <label class="rec-to" style="display:none">To<select name="to_account">{% for a in accounts_list %}<option value="{{ a }}" {% if a == 'Account 1' %}selected{% endif %}>{{ labels[a] }}</option>{% endfor %}</select></label>
+    <label class="check-l"><input type="checkbox" name="auto" checked> Post automatically</label>
+    <button class="btn">Add recurring</button>
+  </form>
+</section>
+
+<!-- BUDGETS -->
+<section class="card pad" id="budgets">
+  <h2>Monthly budgets</h2>
+  {% for b in budgets %}
+    <div class="list-row"><span>{{ b.category }} · {{ b.amount|usd }}/mo</span>
+      <form method="post" action="/settings/budgets/{{ b.category|urlencode }}/delete"><button class="x">✕</button></form></div>
+  {% endfor %}
+  <form method="post" action="/settings/budget" class="inline-form">
+    <select name="category">{% for c in expense_cats %}<option>{{ c }}</option>{% endfor %}</select>
+    <input type="number" step="1" name="amount" placeholder="$ per month" inputmode="decimal" required>
+    <button class="btn">Set</button>
+  </form>
+</section>
+
+<!-- SPLITWISE -->
+<section class="card pad" id="splitwise">
+  <h2>Splitwise</h2>
+  {% if sw_on %}
+    <p class="hint">Syncs on its own every 3 hours when you open the app. Last sync: {{ sw_last[:16].replace('T', ' ') if sw_last else 'never' }}.{% if sw_error %} <span class="red">Last error: {{ sw_error }}</span>{% endif %}</p>
+    <form method="post" action="/settings/sync"><button class="btn">Sync now</button></form>
+  {% else %}
+    <p class="hint">Off. Add <code>SPLITWISE_TOKEN</code> on Render to turn it on.</p>
+  {% endif %}
+</section>
+
+<!-- LEARNED -->
+<section class="card pad" id="rules">
+  <h2>Learned categories</h2>
+  <p class="hint">Every time you pick a category for a place, the app remembers it. Known places skip the inbox.</p>
+  {% for r in rules %}
+    <div class="list-row"><span>{{ r.key }} → {{ r.category }}</span>
+      <form method="post" action="/settings/rules/{{ r.key|urlencode }}/delete"><button class="x">✕</button></form></div>
+  {% else %}
+    <div class="hint">Nothing learned yet.</div>
+  {% endfor %}
+</section>
+
+<!-- SHORTCUTS -->
+<section class="card pad" id="shortcuts">
+  <h2>iPhone Shortcuts</h2>
+  {% if api_ready %}
+    <p class="hint">Apple Pay URL: <code>{{ base_url }}/api/capture</code><br>Siri URL: <code>{{ base_url }}/api/quick</code><br>Use your <code>API_KEY</code> as the <code>key</code> field. Full steps are in SETUP.md.</p>
+  {% else %}
+    <p class="hint">Add <code>API_KEY</code> on Render first, then follow SETUP.md.</p>
+  {% endif %}
+  {% if not no_pin %}<a href="/logout" class="btn-text">Log out</a>{% endif %}
+</section>
+
+<script>
+function recKind() {
+  var k = document.getElementById('rec-kind').value;
+  document.querySelector('.rec-to').style.display = k === 'transfer' ? '' : 'none';
+  document.querySelector('.rec-cat').style.display = k === 'transfer' ? 'none' : '';
+}
+</script>
+{% endblock %}

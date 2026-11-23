@@ -1,0 +1,130 @@
+"""
+Splitwise auto-sync.
+
+Pulls expenses dated on/after your fresh-start date and turns each into a
+ledger row, waiting in the Inbox for one-tap confirmation.
+
+Uses the general Splitwise math, so it handles any split:
+  paid  = what you paid in cash   -> leaves your spending account
+  owed  = your share              -> counts as your spending
+  paid - owed                     -> change in Account 4 (Splitwise)
+
+Settle-ups ("payments") become transfers between Account 1 and Account 4.
+
+If a "you paid" split matches an Apple Pay purchase already logged
+(same amount, within 3 days), that purchase is upgraded to a split
+instead of being counted twice.
+"""
+
+import os
+from datetime import datetime
+
+import requests
+
+from ledger import SPEND_ACC, SPLIT_ACC, f, parse_date
+
+API = "https://secure.splitwise.com/api/v3.0"
+
+SW_CATEGORY = {
+    "groceries": "Groceries", "dining out": "Food", "food and drink": "Food", "liquor": "Food",
+    "movies": "Entertainment", "music": "Entertainment", "games": "Entertainment",
+    "sports": "Entertainment", "entertainment": "Entertainment",
+    "clothing": "Shopping", "electronics": "Shopping", "household supplies": "Shopping",
+    "furniture": "Shopping", "gifts": "Shopping",
+    "gas/fuel": "Transportation", "parking": "Transportation", "taxi": "Transportation",
+    "bus/train": "Transportation", "car": "Transportation",
+    "plane": "Travel", "hotel": "Travel",
+    "rent": "Rent", "mortgage": "Rent",
+    "electricity": "Bills", "heat/gas": "Bills", "tv/phone/internet": "Bills", "water": "Bills",
+    "trash": "Bills", "utilities": "Bills", "insurance": "Bills",
+    "medical expenses": "Health", "education": "Education",
+}
+
+
+def enabled():
+    return bool(os.environ.get("SPLITWISE_TOKEN", "").strip())
+
+
+def _get(path, **params):
+    token = os.environ["SPLITWISE_TOKEN"].strip()
+    r = requests.get(f"{API}/{path}", headers={"Authorization": f"Bearer {token}"},
+                     params=params, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
+def fetch(start_date):
+    me = _get("get_current_user")["user"]["id"]
+    expenses = _get("get_expenses", dated_after=f"{start_date}T00:00:00Z", limit=200)["expenses"]
+    return me, expenses
+
+
+def to_rows(me, expenses, new_id, now_iso):
+    rows = []
+    for e in expenses:
+        if e.get("deleted_at"):
+            continue
+        mine = next((u for u in e.get("users", []) if u.get("user_id") == me), None)
+        if not mine:
+            continue
+        paid, owed = f(mine.get("paid_share")), f(mine.get("owed_share"))
+        if not paid and not owed:
+            continue
+        try:
+            day = datetime.fromisoformat(e["date"].replace("Z", "+00:00")).date().isoformat()
+        except Exception:
+            day = now_iso[:10]
+        base = {"id": new_id(), "created": now_iso, "date": day, "merchant": "",
+                "source": "splitwise", "status": "inbox", "ext_id": f"sw{e['id']}",
+                "your_share": "", "total": f"{f(e.get('cost')):.2f}", "to_account": ""}
+        desc = (e.get("description") or "Splitwise").strip()[:120]
+        if e.get("payment"):
+            if paid:   # you paid a friend back
+                rows.append({**base, "kind": "transfer", "amount": f"{paid:.2f}", "account": SPEND_ACC,
+                             "to_account": SPLIT_ACC, "category": "",
+                             "note": f"Splitwise settle-up (paid): {desc}"})
+            else:      # a friend paid you back
+                rows.append({**base, "kind": "transfer", "amount": f"{owed:.2f}", "account": SPLIT_ACC,
+                             "to_account": SPEND_ACC, "category": "",
+                             "note": f"Splitwise settle-up (received): {desc}"})
+            continue
+        cat_name = ((e.get("category") or {}).get("name") or "").lower()
+        rows.append({**base, "kind": "split", "amount": f"{paid:.2f}",
+                     "your_share": f"{owed:.2f}", "account": SPEND_ACC,
+                     "category": SW_CATEGORY.get(cat_name, "Other"), "note": desc})
+    return rows
+
+
+def sync(store, start_date, new_id, now_iso):
+    """Returns (imported, merged). Raises on API errors."""
+    me, expenses = fetch(start_date)
+    ledger = store.rows("ledger")
+    seen = {r["ext_id"] for r in ledger if r["ext_id"]}
+    imported = merged = 0
+    fresh = []
+    for row in to_rows(me, expenses, new_id, now_iso):
+        if row["ext_id"] in seen:
+            continue
+        seen.add(row["ext_id"])
+        twin = None
+        if row["kind"] == "split" and f(row["amount"]) > 0:
+            d = parse_date(row["date"])
+            for r in ledger:
+                rd = parse_date(r["date"])
+                if (r["kind"] == "expense" and not r["ext_id"] and rd and d
+                        and abs((rd - d).days) <= 3
+                        and abs(f(r["amount"]) - f(row["amount"])) < 0.01):
+                    twin = r
+                    break
+        if twin:
+            twin = dict(twin, kind="split", your_share=row["your_share"], total=row["total"],
+                        ext_id=row["ext_id"], note=twin["note"] or row["note"])
+            store.update("ledger", twin)
+            ledger = store.rows("ledger")
+            merged += 1
+        else:
+            fresh.append(row)
+            imported += 1
+    if fresh:
+        store.append("ledger", None, rows=fresh)
+    return imported, merged

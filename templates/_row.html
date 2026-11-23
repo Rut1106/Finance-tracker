@@ -1,0 +1,62 @@
+{# One ledger entry with a tap-to-open edit panel. Expects `r`. #}
+{% set k = r.kind %}
+<details class="row">
+  <summary>
+    <span class="ico {{ k }}">{% if k == 'expense' %}−{% elif k == 'income' %}+{% elif k == 'transfer' %}⇄{% elif k == 'split' %}◈{% else %}≈{% endif %}</span>
+    <span class="row-main">
+      <span class="row-title">
+        {% if k == 'transfer' %}{{ labels[r.account] }} → {{ labels[r.to_account] }}{% else %}{{ r.note or r.merchant or r.category }}{% endif %}
+      </span>
+      <span class="row-meta">
+        {{ r.date|nice_date }}
+        {% if r.category and k != 'transfer' %}· {{ r.category }}{% endif %}
+        {% if k == 'split' %}· {% if f(r.amount) %}you paid {{ r.amount|usd }}{% else %}they paid{% endif %}{% endif %}
+        {% if k == 'transfer' and r.note and r.note != 'Transfer' %}· {{ r.note }}{% endif %}
+        {% if r.source == 'applepay' %}<i class="src">Apple Pay</i>{% elif r.source == 'splitwise' %}<i class="src">Splitwise</i>{% elif r.source == 'recurring' %}<i class="src">Auto</i>{% elif r.source == 'siri' %}<i class="src">Siri</i>{% endif %}
+      </span>
+    </span>
+    <span class="row-amt {% if k == 'income' or (k == 'adjust' and f(r.amount) > 0) %}pos{% elif k in ('expense', 'split') or (k == 'adjust' and f(r.amount) < 0) %}neg{% endif %}">
+      {% if k == 'expense' %}−{{ r.amount|usd }}
+      {% elif k == 'income' %}+{{ r.amount|usd }}
+      {% elif k == 'split' %}−{{ r.your_share|usd }}
+      {% elif k == 'adjust' %}{{ r.amount|usd(true) }}
+      {% else %}{{ r.amount|usd }}{% endif %}
+    </span>
+  </summary>
+
+  <div class="edit">
+    <form method="post" action="/entry/{{ r.id }}/edit" class="edit-grid">
+      <label>Date<input type="date" name="date" value="{{ r.date }}"></label>
+      <label>{% if k == 'split' %}You paid{% else %}Amount{% endif %}<input type="number" name="amount" step="0.01" value="{{ r.amount }}" inputmode="decimal"></label>
+      {% if k == 'split' %}
+        <label>Your share<input type="number" name="your_share" step="0.01" value="{{ r.your_share }}" inputmode="decimal"></label>
+      {% endif %}
+      <label class="wide">Note<input type="text" name="note" value="{{ r.note }}"></label>
+      {% if k in ('expense', 'split', 'income') %}
+        <label>Category
+          <select name="category">
+            {% for c in (income_cats if k == 'income' else expense_cats) %}
+              <option {% if c == r.category %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label>{% if k == 'transfer' %}From{% else %}Account{% endif %}
+        <select name="account">
+          {% for a in accounts_list %}<option value="{{ a }}" {% if a == r.account %}selected{% endif %}>{{ labels[a] }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if k == 'transfer' %}
+        <label>To
+          <select name="to_account">
+            {% for a in accounts_list %}<option value="{{ a }}" {% if a == r.to_account %}selected{% endif %}>{{ labels[a] }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <button class="btn">Save</button>
+    </form>
+    <form method="post" action="/entry/{{ r.id }}/delete" onsubmit="return confirm('Delete this entry?')">
+      <button class="btn-text danger">Delete entry</button>
+    </form>
+  </div>
+</details>

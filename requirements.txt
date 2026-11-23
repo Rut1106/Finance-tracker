@@ -1,5 +1,6 @@
 flask
-matplotlib
 gunicorn
 gspread
 google-auth
+requests
+tzdata

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block body %}
+
+<!-- QUICK ADD -->
+<form method="post" action="/quick" class="quick" autocomplete="off">
+  <input type="text" name="text" placeholder="uber 18  ·  +2000 salary"
+         enterkeyhint="done" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+  <button aria-label="Add">Add</button>
+</form>
+<details class="howto">
+  <summary>How to type</summary>
+  <div class="howto-grid">
+    <code>uber 18</code><span>expense, category guessed</span>
+    <code>lunch 12 #food</code><span>force a category</span>
+    <code>amazon 42 @2</code><span>pay from {{ labels['Account 2'] }}</span>
+    <code>coffee 5 yesterday</code><span>also <code>11/14</code></span>
+    <code>+2000 salary</code><span>income → {{ labels['Account 3'] }}</span>
+    <code>move 500</code><span>{{ labels['Account 3'] }} → {{ labels['Account 1'] }}</span>
+    <code>move 200 1>2</code><span>any account to any account</span>
+    <code>split pizza 40 20</code><span>you paid 40, your share 20</span>
+    <code>split dinner 60 20 they</code><span>they paid, your share 20</span>
+    <code>settle 40</code><span>friend paid you back</span>
+    <code>settle out 40</code><span>you paid a friend back</span>
+  </div>
+</details>
+
+<!-- NUDGES -->
+{% if no_pin %}
+  <div class="nudge warn">No PIN set — anyone with this link can see your money. Add <code>APP_PIN</code> on Render.</div>
+{% endif %}
+{% if days_since_check >= 7 %}
+  <a href="/check" class="nudge gold">⚖ It's been {{ days_since_check }} days — 2-minute balance check <b>→</b></a>
+{% endif %}
+{% if sw_on and sw_error %}
+  <div class="nudge warn">Splitwise sync problem: {{ sw_error }}</div>
+{% endif %}
+
+<!-- INBOX -->
+{% if inbox %}
+<section class="card inbox" id="inbox">
+  <div class="card-head">
+    <h2>Inbox <span class="count">{{ inbox|length }}</span></h2>
+    <form method="post" action="/inbox/all"><button class="btn-text">Confirm all</button></form>
+  </div>
+  {% for r in inbox %}
+    <div class="ibx">
+      <div class="ibx-top">
+        <div>
+          <div class="ibx-title">
+            {% if r.kind == 'transfer' %}{{ labels[r.account] }} → {{ labels[r.to_account] }}{% else %}{{ r.note or r.merchant }}{% endif %}
+          </div>
+          <div class="row-meta">
+            {{ r.date|nice_date }} · {{ labels[r.account] }}
+            {% if r.kind == 'split' %}· {% if f(r.amount) %}you paid {{ r.amount|usd }}, your share {{ r.your_share|usd }}{% else %}they paid, your share {{ r.your_share|usd }}{% endif %}{% endif %}
+            <i class="src">{{ {'applepay':'Apple Pay','splitwise':'Splitwise','recurring':'Auto'}.get(r.source, r.source) }}</i>
+          </div>
+        </div>
+        <form method="post" action="/inbox/{{ r.id }}/drop"><button class="x" aria-label="Discard">✕</button></form>
+      </div>
+      <form method="post" action="/inbox/{{ r.id }}/ok" class="ibx-form">
+        {% if r.kind in ('expense', 'income') %}
+          <input class="ibx-amt {{ 'pos' if r.kind == 'income' }}" type="number" step="0.01" name="amount" value="{{ r.amount }}" inputmode="decimal" aria-label="Amount">
+        {% else %}
+          <span class="ibx-fixed">{% if r.kind == 'split' %}−{{ r.your_share|usd }}{% else %}{{ r.amount|usd }}{% endif %}</span>
+        {% endif %}
+        {% if r.kind == 'transfer' %}
+          <button class="chip on">✓ Confirm</button>
+        {% else %}
+          <div class="chips">
+            {% set pool = income_cats if r.kind == 'income' else expense_cats %}
+            <button class="chip on" name="category" value="{{ r.category }}">✓ {{ r.category }}</button>
+            {% for c in pool if c != r.category %}
+              <button class="chip" name="category" value="{{ c }}">{{ c }}</button>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </form>
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stat spend">
+    <div class="stat-l">Spent · {{ month_name }}</div>
+    <div class="stat-v red">{{ this.spend|usd }}</div>
+    {% if prev_same_day %}
+      {% set pct = (this.spend - prev_same_day) / prev_same_day * 100 %}
+      <div class="stat-s"><span class="pill {{ 'up' if pct > 0 else 'down' }}">{{ '▲' if pct > 0 else '▼' }} {{ '%.0f'|format(pct|abs) }}%</span> vs {{ prev_name }} by today</div>
+    {% else %}
+      <div class="stat-s">{{ this.count }} purchases</div>
+    {% endif %}
+  </div>
+  <div class="stat income">
+    <div class="stat-l">Income · {{ month_name }}</div>
+    <div class="stat-v green">{{ this.income|usd }}</div>
+    <div class="stat-s">{% if this.income %}{{ '%.0f'|format((this.income - this.spend) / this.income * 100) }}% kept{% else %}nothing yet{% endif %}</div>
+  </div>
+  <div class="stat bal">
+    <div class="stat-l">Total balance</div>
+    <div class="stat-v gold">{{ total|usd }}</div>
+    <div class="stat-s">all 4 accounts</div>
+  </div>
+  <div class="stat sw">
+    <div class="stat-l">Splitwise</div>
+    {% set swb = bal['Account 4'] %}
+    <div class="stat-v {{ 'green' if swb > 0 else 'red' if swb < 0 else '' }}">{{ swb|usd(true) }}</div>
+    <div class="stat-s">{% if swb > 0.004 %}friends owe you{% elif swb < -0.004 %}you owe friends{% else %}all even{% endif %}</div>
+  </div>
+</div>
+
+<!-- ACCOUNTS -->
+<div class="accts">
+  {% for a in accounts_list %}
+    <div class="acct r{{ loop.index }}">
+      <div class="acct-l">{{ labels[a] }}<small>{{ a }}</small></div>
+      <div class="acct-v">{{ bal[a]|usd }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- RECENT -->
+<section class="card">
+  <div class="card-head"><h2>Recent</h2><a href="/activity" class="btn-text">See all →</a></div>
+  {% for r in recent %}
+    {% include "_row.html" %}
+  {% else %}
+    <div class="empty">Nothing yet. Pay with Apple Pay or type <code>uber 18</code> above.</div>
+  {% endfor %}
+</section>
+
+{% endblock %}

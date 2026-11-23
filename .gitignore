@@ -1,1 +1,19 @@
+# secrets - never commit
 credentials.json
+.env
+
+# local test data
+data.json
+data.json.tmp
+
+# python
+venv/
+.venv/
+__pycache__/
+*.pyc
+instance/
+
+# editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
