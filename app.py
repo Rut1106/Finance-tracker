@@ -174,7 +174,7 @@ def maybe_sync_splitwise(force=False):
         store.set_meta("sw_error", "")
         return imported, merged
     except Exception as ex:   # never break the dashboard because Splitwise is down
-        store.set_meta("sw_error", str(ex)[:160])
+        store.set_meta("sw_error", str(ex)[:220])
         return None
 
 
@@ -456,8 +456,9 @@ def settings_sync():
     res = maybe_sync_splitwise(force=True)
     if res:
         flash(f"Splitwise: {res[0]} new, {res[1]} matched to Apple Pay.", "info")
-    else:
-        flash("Splitwise sync failed: " + (store.meta("sw_error") or "token not set"), "error")
+    elif not SW.enabled():
+        flash("Splitwise is off: add SPLITWISE_TOKEN on Render.", "error")
+    # on failure the red Splitwise box on Home already shows the reason
     return redirect(url_for("home"))
 
 

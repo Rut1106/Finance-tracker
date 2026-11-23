@@ -45,10 +45,31 @@ def enabled():
     return bool(os.environ.get("SPLITWISE_TOKEN", "").strip())
 
 
+def _token():
+    """Accept the key even if it was pasted with quotes, spaces or a 'Bearer ' prefix."""
+    t = os.environ.get("SPLITWISE_TOKEN", "").strip().strip('"').strip("'").strip()
+    if t.lower().startswith("bearer "):
+        t = t[7:].strip()
+    return t
+
+
 def _get(path, **params):
-    token = os.environ["SPLITWISE_TOKEN"].strip()
-    r = requests.get(f"{API}/{path}", headers={"Authorization": f"Bearer {token}"},
-                     params=params, timeout=20)
+    r = requests.get(
+        f"{API}/{path}",
+        headers={"Authorization": f"Bearer {_token()}",
+                 "Accept": "application/json",
+                 # Splitwise's firewall blocks the default "python-requests" agent
+                 "User-Agent": "Mozilla/5.0 (compatible; RutFinance/2.0; personal finance tracker)"},
+        params=params, timeout=20)
+    if r.status_code == 401:
+        raise RuntimeError("Splitwise says the key is wrong (401). Generate a new API key "
+                           "and paste only the key into SPLITWISE_TOKEN on Render.")
+    if r.status_code == 403:
+        body = " ".join(r.text.split())[:90]
+        if "cloudflare" in r.text.lower() or "<html" in r.text.lower():
+            raise RuntimeError("Splitwise's firewall blocked the server (403). "
+                               f"Details: {body}")
+        raise RuntimeError(f"Splitwise refused the key (403): {body}")
     r.raise_for_status()
     return r.json()
 
