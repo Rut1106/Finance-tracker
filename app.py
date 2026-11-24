@@ -93,7 +93,7 @@ def sorted_desc(rows):
 
 
 # ---------------------------------------------------------------- auth + setup gate
-OPEN_ENDPOINTS = {"login", "static", "manifest", "api_capture", "api_quick", "health"}
+OPEN_ENDPOINTS = {"login", "static", "manifest", "api_capture", "api_quick", "api_sw_email", "health"}
 
 
 @app.before_request
@@ -205,7 +205,8 @@ def home():
         "home.html", inbox=inbox, recent=recent, bal=bal, total=sum(bal.values()),
         this=this, prev_same_day=prev_same_day, prev_name=date(py, pm, 1).strftime("%b"),
         month_name=t.strftime("%B"), days_since_check=(t - last_check).days,
-        sw_on=SW.enabled(), sw_error=store.meta("sw_error"), sw_last=store.meta("sw_last"))
+        sw_on=SW.enabled(), sw_error=store.meta("sw_error"), sw_last=store.meta("sw_last"),
+        sw_unparsed=store.meta("sw_email_unparsed"))
 
 
 @app.route("/activity")
@@ -398,6 +399,7 @@ def settings():
         recurring=store.rows("recurring"), budgets=store.rows("budgets"),
         rules=sorted(store.rows("rules"), key=lambda r: r["key"]), start=start_date(),
         sw_on=SW.enabled(), sw_last=store.meta("sw_last"), sw_error=store.meta("sw_error"),
+        sw_email_last=store.meta("sw_email_last"),
         api_ready=bool(API_KEY), base_url=request.url_root.rstrip("/"))
 
 
@@ -534,6 +536,50 @@ def api_quick():
     row = make_row(e, "siri", "ok")
     store.append("ledger", row)
     return jsonify(ok=True, message="Logged " + describe(row, L.labels(store)))
+
+
+@app.route("/api/splitwise-email", methods=["POST"])
+def api_sw_email():
+    """Gmail bot (Apps Script) posts each forwarded Splitwise email here:
+    {key, id, subject, body, date}."""
+    if not api_key_ok():
+        return jsonify(ok=False, message="Bad key"), 401
+    d = _json_or_form()
+    msg_id = str(d.get("id") or "").strip()
+    subject = str(d.get("subject") or "")
+    if not msg_id or not subject:
+        return jsonify(ok=False, message="Missing id or subject"), 400
+    ext = "em" + msg_id
+    if any(r["ext_id"] == ext for r in store.rows("ledger")):
+        return jsonify(ok=True, status="duplicate")
+    status, row = SW.parse_email(subject, d.get("body"))
+    store.set_meta("sw_email_last", now_iso())
+    if status == "skip":
+        return jsonify(ok=True, status="skipped")
+    if status == "unparsed":
+        store.set_meta("sw_email_unparsed", subject[:140])
+        return jsonify(ok=True, status="unparsed")
+    try:
+        day = datetime.fromisoformat(str(d.get("date")).replace("Z", "+00:00")).astimezone(TZ).date()
+    except (TypeError, ValueError):
+        day = today()
+    start = start_date()
+    if start and day < start:
+        return jsonify(ok=True, status="before start date")
+    row.setdefault("category", "Other")
+    if row["kind"] == "split":
+        row["category"] = L.guess_category(row["note"], store.rows("rules"))[0]
+    full = make_row({**row, "date": day, "ext_id": ext}, "splitwise", "inbox")
+    imported, merged = SW.stage(store, [full])
+    return jsonify(ok=True, status="merged" if merged else "added",
+                   message=describe(full, L.labels(store)))
+
+
+@app.route("/dismiss/<key>", methods=["POST"])
+def dismiss(key):
+    if key in ("sw_email_unparsed",):
+        store.set_meta(key, "")
+    return redirect(url_for("home"))
 
 
 # ---------------------------------------------------------------- misc

@@ -17,6 +17,7 @@ instead of being counted twice.
 """
 
 import os
+import re
 from datetime import datetime
 
 import requests
@@ -116,14 +117,15 @@ def to_rows(me, expenses, new_id, now_iso):
     return rows
 
 
-def sync(store, start_date, new_id, now_iso):
-    """Returns (imported, merged). Raises on API errors."""
-    me, expenses = fetch(start_date)
+def stage(store, rows):
+    """Add rows to the Inbox, skipping duplicates. A 'you paid' split that matches an
+    Apple Pay purchase (same amount, within 3 days) upgrades that purchase instead.
+    Returns (imported, merged)."""
     ledger = store.rows("ledger")
     seen = {r["ext_id"] for r in ledger if r["ext_id"]}
     imported = merged = 0
     fresh = []
-    for row in to_rows(me, expenses, new_id, now_iso):
+    for row in rows:
         if row["ext_id"] in seen:
             continue
         seen.add(row["ext_id"])
@@ -138,9 +140,9 @@ def sync(store, start_date, new_id, now_iso):
                     twin = r
                     break
         if twin:
-            twin = dict(twin, kind="split", your_share=row["your_share"], total=row["total"],
-                        ext_id=row["ext_id"], note=twin["note"] or row["note"])
-            store.update("ledger", twin)
+            store.update("ledger", dict(twin, kind="split", your_share=row["your_share"],
+                                        total=row["total"], ext_id=row["ext_id"],
+                                        note=twin["note"] or row["note"]))
             ledger = store.rows("ledger")
             merged += 1
         else:
@@ -149,3 +151,62 @@ def sync(store, start_date, new_id, now_iso):
     if fresh:
         store.append("ledger", None, rows=fresh)
     return imported, merged
+
+
+def sync(store, start_date, new_id, now_iso):
+    """API sync (needs Splitwise Pro). Returns (imported, merged). Raises on API errors."""
+    me, expenses = fetch(start_date)
+    return stage(store, to_rows(me, expenses, new_id, now_iso))
+
+
+# ------------------------------------------------------------------ email bridge
+# Free alternative to the API: Splitwise emails are forwarded to a bot Gmail, and a
+# Google Apps Script there posts each one to /api/splitwise-email.
+
+MONEY = r"(?:USD|US\$|\$)\s?([\d,]+(?:\.\d{1,2})?)"
+SKIP_WORDS = ("deleted", "updated", "commented", "password", "login", "balance for",
+              "added you to", "invited", "privacy", "welcome", "reminder", "action required",
+              "restored", "subscription", "receipt")
+
+
+def _amt(pattern, text):
+    m = re.search(pattern, text, re.I)
+    return f(m.group(m.lastindex)) if m else None
+
+
+def parse_email(subject, body):
+    """Return ("skip", None) | ("unparsed", None) | ("ok", partial_row)."""
+    subject = " ".join(str(subject or "").split())
+    text = " ".join(f"{subject} . {body or ''}".split())
+    low = subject.lower()
+
+    # Settle-ups: "Rakhi Waykole paid you USD68.65 on Splitwise"
+    m = re.search(r"^(.+?) paid you " + MONEY, subject, re.I)
+    if m:
+        return "ok", {"kind": "transfer", "amount": f(m.group(2)), "account": SPLIT_ACC,
+                      "to_account": SPEND_ACC, "category": "",
+                      "note": f"{m.group(1).strip()} paid you back"}
+    m = re.search(r"^you paid (.+?) " + MONEY, subject, re.I)
+    if m:
+        return "ok", {"kind": "transfer", "amount": f(m.group(2)), "account": SPEND_ACC,
+                      "to_account": SPLIT_ACC, "category": "",
+                      "note": f"You paid {m.group(1).strip()} back"}
+
+    if any(w in low for w in SKIP_WORDS):
+        return "skip", None
+
+    # New expense: description is usually quoted in the subject
+    q = re.search(r"[\"\u201c\u2018']([^\"\u201d\u2019']{1,80})[\"\u201d\u2019']", subject)
+    desc = (q.group(1) if q else re.sub(r"(?i)\s*on splitwise$", "", subject))[:100].strip()
+    total = _amt(r"\b(?:total|cost)\b[^\d$]{0,12}" + MONEY, text)
+    owe = _amt(r"\byou owe\b[^\d$]{0,40}?" + MONEY, text)
+    back = _amt(r"\byou (?:get back|are owed|lent)\b[^\d$]{0,40}?" + MONEY, text)
+    if owe:                     # someone else paid, your share = what you owe
+        return "ok", {"kind": "split", "amount": 0.0, "your_share": owe,
+                      "total": total or "", "note": desc or "Splitwise", "account": SPEND_ACC}
+    if back and total:          # you paid the total, friends owe you `back`
+        return "ok", {"kind": "split", "amount": total, "your_share": round(total - back, 2),
+                      "total": total, "note": desc or "Splitwise", "account": SPEND_ACC}
+    if "payment" in text.lower() or "you are not involved" in text.lower():
+        return "skip", None
+    return "unparsed", None

@@ -76,11 +76,10 @@
 <!-- SPLITWISE -->
 <section class="card pad" id="splitwise">
   <h2>Splitwise</h2>
+  <p class="hint">Email bridge (free): {% if sw_email_last %}last Splitwise email received {{ sw_email_last[:16].replace('T', ' ') }}.{% else %}no emails received yet. See SETUP-SPLITWISE-EMAIL.md.{% endif %}</p>
   {% if sw_on %}
-    <p class="hint">Syncs on its own every 3 hours when you open the app. Last sync: {{ sw_last[:16].replace('T', ' ') if sw_last else 'never' }}.{% if sw_error %} <span class="red">Last error: {{ sw_error }}</span>{% endif %}</p>
+    <p class="hint">API sync (needs Splitwise Pro): last try {{ sw_last[:16].replace('T', ' ') if sw_last else 'never' }}.{% if sw_error %} <span class="red">{{ sw_error }}</span>{% endif %}</p>
     <form method="post" action="/settings/sync"><button class="btn">Sync now</button></form>
-  {% else %}
-    <p class="hint">Off. Add <code>SPLITWISE_TOKEN</code> on Render to turn it on.</p>
   {% endif %}
 </section>
 
