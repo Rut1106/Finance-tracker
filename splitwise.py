@@ -122,7 +122,7 @@ def stage(store, rows):
     Apple Pay purchase (same amount, within 3 days) upgrades that purchase instead.
     Returns (imported, merged)."""
     ledger = store.rows("ledger")
-    seen = {r["ext_id"] for r in ledger if r["ext_id"]}
+    seen = {t for r in ledger for t in str(r["ext_id"] or "").split()}
     imported = merged = 0
     fresh = []
     for row in rows:
@@ -134,14 +134,16 @@ def stage(store, rows):
             d = parse_date(row["date"])
             for r in ledger:
                 rd = parse_date(r["date"])
-                if (r["kind"] == "expense" and not r["ext_id"] and rd and d
+                toks = str(r["ext_id"] or "").split()
+                if (r["kind"] == "expense" and not any(t[:2] in ("sw", "em") for t in toks) and rd and d
                         and abs((rd - d).days) <= 3
                         and abs(f(r["amount"]) - f(row["amount"])) < 0.01):
                     twin = r
                     break
         if twin:
             store.update("ledger", dict(twin, kind="split", your_share=row["your_share"],
-                                        total=row["total"], ext_id=row["ext_id"],
+                                        total=row["total"],
+                                        ext_id=" ".join(str(twin["ext_id"] or "").split() + [row["ext_id"]]),
                                         note=twin["note"] or row["note"]))
             ledger = store.rows("ledger")
             merged += 1

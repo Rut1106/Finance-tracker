@@ -3,19 +3,21 @@ Rut Finance v2 — low-effort money tracking.
 
 Capture paths (fastest first):
   1. Apple Pay      -> iPhone Shortcut posts to /api/capture   (zero typing)
-  2. Splitwise      -> auto-synced every few hours              (zero typing)
+  2. Email bridge   -> Splitwise + Chase/Wells Fargo alert emails (zero typing)
   3. Recurring      -> rent, salary, bills post on their day    (zero typing)
   4. Quick add      -> one line like "uber 18", or Siri via /api/quick
   5. Balance check  -> weekly, logs whatever slipped through as "Untracked"
 """
 
 import os
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from flask import (Flask, flash, jsonify, redirect, render_template, request, session,
                    url_for)
 
+import bank as BK
 import ledger as L
 import splitwise as SW
 from quickadd import describe, parse
@@ -29,6 +31,7 @@ TZ = ZoneInfo(os.environ.get("TZ_NAME", "America/Chicago"))
 APP_PIN = os.environ.get("APP_PIN", "").strip()
 API_KEY = os.environ.get("API_KEY", "").strip()
 SYNC_EVERY = timedelta(hours=3)
+MY_NAMES = [n.strip() for n in os.environ.get("MY_NAMES", "Rut Patel").split(",") if n.strip()]
 
 store = make_store()
 
@@ -88,12 +91,59 @@ def api_key_ok():
     return given.strip() == API_KEY
 
 
+def tokens(r):
+    """ext_id can hold several linked ids: 'em123 bk456' (Splitwise email + bank alert)."""
+    return str(r.get("ext_id") or "").split()
+
+
+def has_token(r, prefix):
+    return any(t.startswith(prefix) for t in tokens(r))
+
+
+def with_token(r, tok):
+    return " ".join(tokens(r) + [tok])
+
+
+def seen_ext(ext):
+    return any(ext in tokens(r) for r in store.rows("ledger"))
+
+
+def find_twin(day, amount, pred, window=3):
+    """Closest row (by date) with the same amount that passes pred."""
+    best, gap = None, None
+    for r in store.rows("ledger"):
+        d = L.parse_date(r["date"])
+        if not d or abs((d - day).days) > window or abs(L.f(r["amount"]) - amount) >= 0.01:
+            continue
+        if pred(r) and (gap is None or abs((d - day).days) < gap):
+            best, gap = r, abs((d - day).days)
+    return best
+
+
+def email_day(d):
+    try:
+        return datetime.fromisoformat(str(d.get("date")).replace("Z", "+00:00")).astimezone(TZ).date()
+    except (TypeError, ValueError):
+        return today()
+
+
+def bank_account(bank):
+    """Chase -> the account whose name has 'chase' (else Account 1); Wells -> 'wells' (else 3)."""
+    lab = L.labels(store)
+    word = "chase" if bank == "chase" else "wells"
+    for a in L.ACCOUNTS[:3]:
+        if word in lab[a].lower():
+            return a
+    return L.SPEND_ACC if bank == "chase" else L.INCOME_ACC
+
+
 def sorted_desc(rows):
     return sorted(rows, key=lambda r: (r["date"], r["id"]), reverse=True)
 
 
 # ---------------------------------------------------------------- auth + setup gate
-OPEN_ENDPOINTS = {"login", "static", "manifest", "api_capture", "api_quick", "api_sw_email", "health"}
+OPEN_ENDPOINTS = {"login", "static", "manifest", "api_capture", "api_quick", "api_sw_email",
+                  "api_email", "api_summary", "health"}
 
 
 @app.before_request
@@ -206,7 +256,15 @@ def home():
         this=this, prev_same_day=prev_same_day, prev_name=date(py, pm, 1).strftime("%b"),
         month_name=t.strftime("%B"), days_since_check=(t - last_check).days,
         sw_on=SW.enabled(), sw_error=store.meta("sw_error"), sw_last=store.meta("sw_last"),
-        sw_unparsed=store.meta("sw_email_unparsed"))
+        sw_unparsed=store.meta("sw_email_unparsed"), bank_unparsed=store.meta("bank_email_unparsed"),
+        sts=safe_now(t))
+
+
+def safe_now(t=None):
+    t = t or today()
+    raw = store.meta("spend_plan")
+    plan = L.f(raw) if str(raw or "").strip() else None
+    return L.safe_to_spend(store, t, plan, L.f(store.meta("save_target")))
 
 
 @app.route("/activity")
@@ -324,6 +382,23 @@ def inbox_ok(rid):
     return redirect(url_for("home") + "#inbox")
 
 
+@app.route("/inbox/<rid>/settle", methods=["POST"])
+def inbox_settle(rid):
+    """A Zelle to/from a friend was really a Splitwise settle-up -> transfer with Account 4."""
+    r = store.find("ledger", rid)
+    if r and r["kind"] in ("income", "expense"):
+        who = r["merchant"] or r["note"]
+        if r["kind"] == "income":
+            r = dict(r, kind="transfer", account=L.SPLIT_ACC, to_account=r["account"],
+                     note=f"{who} paid you back", category="", status="ok")
+        else:
+            r = dict(r, kind="transfer", to_account=L.SPLIT_ACC,
+                     note=f"You paid {who} back", category="", status="ok")
+        store.update("ledger", r)
+        flash("Saved as a Splitwise settle-up.", "info")
+    return redirect(url_for("home") + "#inbox")
+
+
 @app.route("/inbox/<rid>/drop", methods=["POST"])
 def inbox_drop(rid):
     store.delete("ledger", rid)
@@ -399,7 +474,8 @@ def settings():
         recurring=store.rows("recurring"), budgets=store.rows("budgets"),
         rules=sorted(store.rows("rules"), key=lambda r: r["key"]), start=start_date(),
         sw_on=SW.enabled(), sw_last=store.meta("sw_last"), sw_error=store.meta("sw_error"),
-        sw_email_last=store.meta("sw_email_last"),
+        sw_email_last=store.meta("sw_email_last"), bank_email_last=store.meta("bank_email_last"),
+        spend_plan=store.meta("spend_plan"), save_target=store.meta("save_target"), sts=safe_now(),
         api_ready=bool(API_KEY), base_url=request.url_root.rstrip("/"))
 
 
@@ -412,6 +488,15 @@ def settings_accounts():
         store.upsert("accounts", row)
     flash("Accounts saved.", "info")
     return redirect(url_for("settings"))
+
+
+@app.route("/settings/plan", methods=["POST"])
+def settings_plan():
+    for k in ("spend_plan", "save_target"):
+        v = request.form.get(k, "").strip()
+        store.set_meta(k, money(v) if v else "")
+    flash("Plan saved.", "info")
+    return redirect(url_for("home"))
 
 
 @app.route("/settings/card", methods=["POST"])
@@ -514,6 +599,12 @@ def api_capture():
     merchant = str(d.get("merchant") or "").strip() or "Apple Pay purchase"
     if amount <= 0:
         return jsonify(ok=False, message="No amount received"), 400
+    twin = find_twin(today(), amount, lambda r: r["source"] == "bank" and r["kind"] in ("expense", "split")
+                     and not has_token(r, "ap"), window=2)
+    if twin:
+        store.update("ledger", dict(twin, ext_id=with_token(twin, "ap" + new_id())))
+        return jsonify(ok=True, status="matched",
+                       message=f"Already logged from your bank alert ✓ {usd(amount)} {twin['note']}")
     cat, learned = L.guess_category(merchant, store.rows("rules"))
     row = make_row({"kind": "expense", "amount": amount, "merchant": merchant[:80],
                     "note": merchant[:80], "category": cat,
@@ -540,17 +631,41 @@ def api_quick():
 
 @app.route("/api/splitwise-email", methods=["POST"])
 def api_sw_email():
-    """Gmail bot (Apps Script) posts each forwarded Splitwise email here:
-    {key, id, subject, body, date}."""
+    """Old bridge script (v2) — Splitwise emails only."""
+    if not api_key_ok():
+        return jsonify(ok=False, message="Bad key"), 401
+    return handle_splitwise(_json_or_form())
+
+
+@app.route("/api/email", methods=["POST"])
+def api_email():
+    """Gmail bot (Apps Script v3) posts every forwarded email here:
+    {key, id, from, subject, body, date}. Routed by sender."""
     if not api_key_ok():
         return jsonify(ok=False, message="Bad key"), 401
     d = _json_or_form()
+    sender = str(d.get("from") or "").lower()
+    body = str(d.get("body") or "")
+    if not any(w in sender for w in ("splitwise", "chase", "wellsfargo", "wells fargo")):
+        fwd = re.search(r"From:\s*[^<\n]*<([^>\s]+)>", body)      # forwarded by hand
+        if fwd:
+            sender = fwd.group(1).lower()
+    if "splitwise" in sender:
+        return handle_splitwise(d)
+    if "chase" in sender or "wellsfargo" in sender or "wells fargo" in sender:
+        return handle_bank(d, sender)
+    if "splitwise" in (str(d.get("subject")) + body).lower():
+        return handle_splitwise(d)
+    return jsonify(ok=True, status="skipped", message="Not a Splitwise or bank email")
+
+
+def handle_splitwise(d):
     msg_id = str(d.get("id") or "").strip()
     subject = str(d.get("subject") or "")
     if not msg_id or not subject:
         return jsonify(ok=False, message="Missing id or subject"), 400
     ext = "em" + msg_id
-    if any(r["ext_id"] == ext for r in store.rows("ledger")):
+    if seen_ext(ext):
         return jsonify(ok=True, status="duplicate")
     status, row = SW.parse_email(subject, d.get("body"))
     store.set_meta("sw_email_last", now_iso())
@@ -559,13 +674,25 @@ def api_sw_email():
     if status == "unparsed":
         store.set_meta("sw_email_unparsed", subject[:140])
         return jsonify(ok=True, status="unparsed")
-    try:
-        day = datetime.fromisoformat(str(d.get("date")).replace("Z", "+00:00")).astimezone(TZ).date()
-    except (TypeError, ValueError):
-        day = today()
+    day = email_day(d)
     start = start_date()
     if start and day < start:
         return jsonify(ok=True, status="before start date")
+
+    # A settle-up whose Zelle already came in from the bank: turn that bank row into the transfer
+    if row["kind"] == "transfer":
+        incoming = row["account"] == L.SPLIT_ACC
+        twin = find_twin(day, L.f(row["amount"]), lambda r: r["source"] == "bank"
+                         and r["kind"] == ("income" if incoming else "expense")
+                         and r["note"].startswith("Zelle"))
+        if twin:
+            acc = twin["account"]
+            store.update("ledger", dict(
+                twin, kind="transfer", category="", note=row["note"], status="ok",
+                account=L.SPLIT_ACC if incoming else acc, to_account=acc if incoming else L.SPLIT_ACC,
+                ext_id=with_token(twin, ext)))
+            return jsonify(ok=True, status="merged", message="Matched to your Zelle: " + row["note"])
+
     row.setdefault("category", "Other")
     if row["kind"] == "split":
         row["category"] = L.guess_category(row["note"], store.rows("rules"))[0]
@@ -575,9 +702,119 @@ def api_sw_email():
                    message=describe(full, L.labels(store)))
 
 
+def handle_bank(d, sender):
+    msg_id = str(d.get("id") or "").strip()
+    subject = str(d.get("subject") or "")
+    if not msg_id:
+        return jsonify(ok=False, message="Missing id"), 400
+    ext = "bk" + msg_id
+    if seen_ext(ext):
+        return jsonify(ok=True, status="duplicate")
+    status, b = BK.parse_bank(sender, subject, d.get("body"), MY_NAMES)
+    store.set_meta("bank_email_last", now_iso())
+    if status == "skip":
+        return jsonify(ok=True, status="skipped")
+    if status == "unparsed":
+        store.set_meta("bank_email_unparsed", subject[:140])
+        return jsonify(ok=True, status="unparsed")
+    day = email_day(d)
+    start = start_date()
+    if start and day < start:
+        return jsonify(ok=True, status="before start date")
+
+    acc, amt, kind, who = bank_account(b["bank"]), b["amount"], b["kind"], b["who"]
+    other = bank_account("wells" if b["bank"] == "chase" else "chase")
+    rules = store.rows("rules")
+
+    def link(twin, **changes):
+        store.update("ledger", dict(twin, ext_id=with_token(twin, ext), **changes))
+        return jsonify(ok=True, status="matched", message=f"Matched: {usd(amt)} {twin['note']}")
+
+    def add(e, status_):
+        row = make_row({**e, "amount": amt, "date": day, "ext_id": ext}, "bank", status_)
+        store.append("ledger", row)
+        return jsonify(ok=True, status="added", message=describe(row, L.labels(store)))
+
+    if kind == "purchase":
+        twin = find_twin(day, amt, lambda r: r["kind"] in ("expense", "split") and r["source"] != "bank"
+                         and not has_token(r, "bk"))
+        if twin:
+            fix = {"account": acc} if L.f(twin["amount"]) else {}
+            return link(twin, **fix)
+        cat, learned = L.guess_category(who, rules)
+        return add({"kind": "expense", "merchant": who[:80], "note": who[:80], "category": cat,
+                    "account": acc}, "ok" if learned else "inbox")
+
+    if kind in ("self_out", "self_in"):
+        src, dst = (acc, other) if kind == "self_out" else (other, acc)
+        if src == dst:
+            dst = L.GENERAL_ACC if src != L.GENERAL_ACC else L.SPEND_ACC
+        twin = find_twin(day, amt, lambda r: r["kind"] == "transfer" and r["account"] == src
+                         and r["to_account"] == dst and sum(t.startswith("bk") for t in tokens(r)) < 2)
+        if twin:
+            return link(twin)
+        return add({"kind": "transfer", "account": src, "to_account": dst,
+                    "note": "Zelle to myself"}, "ok")
+
+    if kind == "zelle_in":
+        twin = find_twin(day, amt, lambda r: r["kind"] == "transfer" and r["account"] == L.SPLIT_ACC
+                         and not has_token(r, "bk"))
+        if twin:                                    # Splitwise "paid you" already logged
+            return link(twin, to_account=acc)
+        cat = L.guess_category(who, rules, "income")[0]
+        return add({"kind": "income", "merchant": who[:80], "note": b["note"], "category": cat,
+                    "account": acc}, "inbox")
+
+    if kind == "zelle_out":
+        twin = find_twin(day, amt, lambda r: r["kind"] == "transfer" and r["to_account"] == L.SPLIT_ACC
+                         and not has_token(r, "bk"))
+        if twin:
+            return link(twin, account=acc)
+        cat, learned = L.guess_category(who, rules)
+        return add({"kind": "expense", "merchant": who[:80], "note": b["note"], "category": cat,
+                    "account": acc}, "inbox")
+
+    if kind == "deposit":
+        twin = find_twin(day, amt, lambda r: r["kind"] == "income" and r["source"] != "bank"
+                         and not has_token(r, "bk"))
+        if twin:
+            return link(twin, account=acc)
+        cat = L.guess_category(who + " salary" if re.search(r"(?i)payroll|univ|utd|texas", who)
+                               else who, rules, "income")[0]
+        return add({"kind": "income", "merchant": who[:80], "note": who[:80], "category": cat,
+                    "account": acc}, "inbox")
+
+    return jsonify(ok=True, status="skipped")
+
+
+@app.route("/api/summary", methods=["GET", "POST"])
+def api_summary():
+    """Evening notification (iPhone automation at 9 pm): one line about today."""
+    if not api_key_ok():
+        return jsonify(ok=False, message="Bad key"), 401
+    t = today()
+    st = safe_now(t)
+    waiting = sum(1 for r in store.rows("ledger") if r["status"] == "inbox")
+    n = st["n_today"]
+    parts = [f"Today {usd(st['spent_today'])} spent" + (f" ({n})" if n else "") if st["spent_today"]
+             else "No spending today 🌿"]
+    if st["has_plan"]:
+        if st["tomorrow"] is not None:
+            tm = st["tomorrow"]
+            parts.append(f"{usd(tm)}/day left for {t.strftime('%b')}" if tm > 0
+                         else f"over plan by {usd(-st['after_today'])} for {t.strftime('%b')}")
+        else:
+            parts.append(f"{t.strftime('%B')} done, {usd(st['after_today'])} left")
+    if waiting:
+        parts.append(f"{waiting} waiting in Inbox")
+    msg = " · ".join(parts)
+    return jsonify(ok=True, message=msg, spent_today=round(st["spent_today"], 2),
+                   per_day=round(st["tomorrow"] or 0, 2), inbox=waiting)
+
+
 @app.route("/dismiss/<key>", methods=["POST"])
 def dismiss(key):
-    if key in ("sw_email_unparsed",):
+    if key in ("sw_email_unparsed", "bank_email_unparsed"):
         store.set_meta(key, "")
     return redirect(url_for("home"))
 

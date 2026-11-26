@@ -12,7 +12,7 @@
         {% if r.category and k != 'transfer' %}· {{ r.category }}{% endif %}
         {% if k == 'split' %}· {% if f(r.amount) %}you paid {{ r.amount|usd }}{% else %}they paid{% endif %}{% endif %}
         {% if k == 'transfer' and r.note and r.note != 'Transfer' %}· {{ r.note }}{% endif %}
-        {% if r.source == 'applepay' %}<i class="src">Apple Pay</i>{% elif r.source == 'splitwise' %}<i class="src">Splitwise</i>{% elif r.source == 'recurring' %}<i class="src">Auto</i>{% elif r.source == 'siri' %}<i class="src">Siri</i>{% endif %}
+        {% if r.source == 'applepay' %}<i class="src">Apple Pay</i>{% elif r.source == 'splitwise' %}<i class="src">Splitwise</i>{% elif r.source == 'recurring' %}<i class="src">Auto</i>{% elif r.source == 'siri' %}<i class="src">Siri</i>{% elif r.source == 'bank' %}<i class="src">Bank</i>{% endif %}
       </span>
     </span>
     <span class="row-amt {% if k == 'income' or (k == 'adjust' and f(r.amount) > 0) %}pos{% elif k in ('expense', 'split') or (k == 'adjust' and f(r.amount) < 0) %}neg{% endif %}">

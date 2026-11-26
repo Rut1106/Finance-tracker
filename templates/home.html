@@ -24,12 +24,36 @@
   </div>
 </details>
 
+<!-- SAFE TO SPEND -->
+{% if sts.has_plan %}
+<a href="/settings#plan" class="sts {{ 'over' if sts.today_left < 0 }}">
+  <div class="sts-l">Safe to spend today</div>
+  <div class="sts-v">{{ sts.today_left|usd if sts.today_left >= 0 else '$0.00' }}</div>
+  <div class="sts-bar"><i style="width: {{ [100, (sts.spent_today / sts.daily * 100) if sts.daily > 0 else 100]|min }}%"></i></div>
+  <div class="sts-s">
+    {% if sts.today_left < 0 %}{{ (-sts.today_left)|usd }} over today ·{% else %}spent today {{ sts.spent_today|usd }} ·{% endif %}
+    {% if sts.left > 0 %}{{ sts.left|usd }} left for {{ month_name }} · {{ sts.days_left }} day{{ 's' if sts.days_left != 1 }}{% else %}over plan by {{ (-sts.left)|usd }}{% endif %}
+    {% if sts.bills_ahead %}· {{ sts.bills_ahead|usd }} bills ahead held back{% endif %}
+  </div>
+</a>
+{% else %}
+<a href="/settings#plan" class="nudge good">🌿 Set your monthly plan to see a "safe to spend today" number <b>→</b></a>
+{% endif %}
+
 <!-- NUDGES -->
 {% if no_pin %}
   <div class="nudge warn">No PIN set — anyone with this link can see your money. Add <code>APP_PIN</code> on Render.</div>
 {% endif %}
 {% if days_since_check >= 7 %}
   <a href="/check" class="nudge gold">⚖ It's been {{ days_since_check }} days — 2-minute balance check <b>→</b></a>
+{% endif %}
+{% if sw_unparsed %}
+  <div class="nudge warn">Couldn't read a Splitwise email: "{{ sw_unparsed }}". Add it with quick-add if it matters.
+    <form method="post" action="/dismiss/sw_email_unparsed" style="display:inline"><button class="btn-text danger">Dismiss</button></form></div>
+{% endif %}
+{% if bank_unparsed %}
+  <div class="nudge warn">Couldn't read a bank email: "{{ bank_unparsed }}". Add it with quick-add if it matters.
+    <form method="post" action="/dismiss/bank_email_unparsed" style="display:inline"><button class="btn-text danger">Dismiss</button></form></div>
 {% endif %}
 {% if sw_on and sw_error %}
   <div class="nudge warn">Splitwise sync problem: {{ sw_error }}</div>
@@ -52,7 +76,7 @@
           <div class="row-meta">
             {{ r.date|nice_date }} · {{ labels[r.account] }}
             {% if r.kind == 'split' %}· {% if f(r.amount) %}you paid {{ r.amount|usd }}, your share {{ r.your_share|usd }}{% else %}they paid, your share {{ r.your_share|usd }}{% endif %}{% endif %}
-            <i class="src">{{ {'applepay':'Apple Pay','splitwise':'Splitwise','recurring':'Auto'}.get(r.source, r.source) }}</i>
+            <i class="src">{{ {'applepay':'Apple Pay','splitwise':'Splitwise','recurring':'Auto','bank':'Bank'}.get(r.source, r.source) }}</i>
           </div>
         </div>
         <form method="post" action="/inbox/{{ r.id }}/drop"><button class="x" aria-label="Discard">✕</button></form>
@@ -75,6 +99,10 @@
           </div>
         {% endif %}
       </form>
+      {% if r.source == 'bank' and r.note.startswith('Zelle') and r.kind in ('income', 'expense') %}
+        <form method="post" action="/inbox/{{ r.id }}/settle" class="ibx-settle">
+          <button class="btn-text">↔ It was a Splitwise settle-up</button></form>
+      {% endif %}
     </div>
   {% endfor %}
 </section>

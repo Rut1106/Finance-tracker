@@ -65,11 +65,15 @@ STOP = {"the", "at", "in", "on", "for", "and", "from", "to", "a", "an", "of", "w
 
 
 def f(x):
-    """Safe float."""
+    """Safe float. Also copes with "USD 5.75", "$1,234.50", "−12" from Shortcuts/emails."""
+    if isinstance(x, (int, float)):
+        return float(x)
+    s = str(x or "").replace(",", "").replace("\u2212", "-").strip()
     try:
-        return float(str(x).replace("$", "").replace(",", "").strip() or 0)
+        return float(s.replace("$", "") or 0)
     except ValueError:
-        return 0.0
+        m = re.search(r"-?\d+(?:\.\d+)?", s)
+        return float(m.group()) if m else 0.0
 
 
 def parse_date(s):
@@ -212,3 +216,56 @@ def snapshots(store, start, today):
         opening_total += net
         y, m = add_months(y, m, 1)
     return list(reversed(out))
+
+
+# ---------------------------------------------------------------- safe to spend
+def safe_to_spend(store, today, plan=None, save=0.0):
+    """How much can be spent per day for the rest of the month and still land on plan.
+
+    plan  = money available to spend this month. If not set: income this month +
+            recurring income still to come.
+    left  = plan - savings goal - spent before today - recurring bills still to come.
+    daily = left / days remaining (today included). today_left = daily - spent today.
+    """
+    y, m = today.year, today.month
+    ym = today.strftime("%Y-%m")
+    end = last_day(y, m)
+    days_left = (end - today).days + 1
+
+    spent_before = spent_today = n_today = income = 0.0
+    rows = [r for r in store.rows("ledger") if r["status"] in ("ok", "inbox")]   # inbox = real, just unsorted
+    for r in rows:
+        d0 = parse_date(r["date"])
+        if not d0 or (d0.year, d0.month) != (y, m):
+            continue
+        _, s, i, _ = effects(r)
+        income += i
+        d = parse_date(r["date"])
+        if d == today:
+            spent_today += s
+            if s and r["kind"] != "adjust":
+                n_today += 1
+        elif d and d < today:
+            spent_before += s
+
+    rec_in = rec_out = 0.0
+    for r in store.rows("recurring"):
+        if r["last_posted"] == ym:
+            continue
+        if r["kind"] == "income":
+            rec_in += f(r["amount"])
+        elif r["kind"] == "expense":
+            rec_out += f(r["amount"])
+
+    auto = plan is None
+    if auto:
+        plan = income + rec_in
+    left = plan - f(save) - spent_before - rec_out
+    daily = left / days_left if days_left else 0.0
+    after_today = left - spent_today
+    tomorrow = (after_today / (days_left - 1)) if days_left > 1 else None
+    return {"plan": plan, "auto": auto, "save": f(save), "left": left, "days_left": days_left,
+            "daily": daily, "spent_today": spent_today, "n_today": int(n_today),
+            "today_left": daily - spent_today, "after_today": after_today,
+            "tomorrow": tomorrow, "bills_ahead": rec_out, "income_ahead": rec_in,
+            "has_plan": plan > 0}

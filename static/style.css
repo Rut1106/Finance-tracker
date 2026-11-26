@@ -310,3 +310,18 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 
   .set-row { grid-template-columns: 1fr; }
   .chk input { width: 118px; }
 }
+
+/* ---- safe to spend ---- */
+.sts { display: block; text-decoration: none; color: var(--ink); margin: 12px 0 10px; padding: 14px 16px 13px;
+  background: linear-gradient(135deg, var(--em-s), var(--gold-s)); border: 1px solid var(--em-l);
+  border-radius: var(--r2); box-shadow: var(--sh); }
+.sts-l { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--em-d); }
+.sts-v { font: 700 30px var(--mono); letter-spacing: -.03em; color: var(--em-d); margin: 2px 0 8px; }
+.sts-bar { height: 6px; border-radius: 3px; background: var(--sub2); overflow: hidden; }
+.sts-bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
+.sts-s { font-size: 12px; color: var(--ink2); margin-top: 7px; }
+.sts.over { border-color: rgba(179, 67, 58, .3); background: var(--red-s); }
+.sts.over .sts-v, .sts.over .sts-l { color: var(--red); }
+.sts.over .sts-bar i { background: var(--red); }
+.ibx-settle { margin-top: 6px; }
+.sts + .stats, .nudge.good + .stats { margin-top: 0; }

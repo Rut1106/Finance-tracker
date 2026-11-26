@@ -18,6 +18,20 @@
   </form>
 </section>
 
+<!-- PLAN -->
+<section class="card pad" id="plan">
+  <h2>Monthly plan</h2>
+  <p class="hint">Powers "Safe to spend today" on Home. Leave the first box empty to use the income you actually get this month (plus recurring income still to come). Recurring bills not yet posted are held back automatically.</p>
+  <form method="post" action="/settings/plan">
+    <div class="set-row">
+      <label>Money to spend per month<input type="number" step="0.01" name="spend_plan" value="{{ spend_plan }}" placeholder="automatic" inputmode="decimal"></label>
+      <label>Save each month<input type="number" step="0.01" name="save_target" value="{{ save_target }}" placeholder="0" inputmode="decimal"></label>
+    </div>
+    <button class="btn">Save plan</button>
+  </form>
+  {% if sts.has_plan %}<p class="hint">Right now: {{ sts.plan|usd }} plan{% if sts.auto %} (automatic){% endif %} · {{ sts.daily|usd }}/day for the {{ sts.days_left }} days left.</p>{% endif %}
+</section>
+
 <!-- CARDS -->
 <section class="card pad" id="cards">
   <h2>Apple Pay cards</h2>
@@ -81,6 +95,13 @@
     <p class="hint">API sync (needs Splitwise Pro): last try {{ sw_last[:16].replace('T', ' ') if sw_last else 'never' }}.{% if sw_error %} <span class="red">{{ sw_error }}</span>{% endif %}</p>
     <form method="post" action="/settings/sync"><button class="btn">Sync now</button></form>
   {% endif %}
+</section>
+
+<!-- BANK -->
+<section class="card pad" id="bank">
+  <h2>Bank alerts</h2>
+  <p class="hint">Chase and Wells Fargo alert emails come through the same bot Gmail. {% if bank_email_last %}Last bank email {{ bank_email_last[:16].replace('T', ' ') }}.{% else %}None received yet. See SETUP-BANK-ALERTS.md.{% endif %}
+  Chase goes to the account you named "Chase" (else Account 1), Wells Fargo to "Wells Fargo" (else Account 3). A purchase Apple Pay already logged is matched, not counted twice.</p>
 </section>
 
 <!-- LEARNED -->
