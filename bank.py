@@ -1,5 +1,9 @@
 """
-Bank alert emails (Chase, Wells Fargo) -> ledger rows.
+Bank + card alert emails (Chase, Wells Fargo, Discover, Amex) -> ledger rows.
+
+Credit cards are treated as Chase spending: a card purchase counts the moment you
+swipe (from Account 1), and paying the card bill is ignored. If a bill is paid from
+Wells Fargo it becomes a transfer Wells -> Chase, so balances still add up.
 
 Built from Rut's real alert emails:
   Chase   "You received money with Zelle®"   "NAME sent you money ... Amount | $171.18"
@@ -16,7 +20,8 @@ kind:
   zelle_in  someone sent you money          -> income (or a Splitwise settle-up)
   zelle_out you sent someone money          -> expense (or a Splitwise settle-up)
   self_out  you sent money to yourself      -> transfer between your own accounts
-  self_in   you received from yourself      -> skipped (the "sent" side records it)
+  self_in   you received from yourself      -> transfer (matched with the "sent" side)
+  card_pay  card bill paid from a bank      -> transfer Wells -> Chase, or ignored from Chase
 """
 
 import re
@@ -27,7 +32,10 @@ SKIP = ("statement", "fico", "credit score", "scheduled", "autopay", "payment is
         "sign in", "signed in", "new device", "recipient", "profile", "verify", "security",
         "paperless", "offer", "rewards", "points", "upgrade", "experience", "save you",
         "update", "welcome", "enroll", "limit", "balance", "travel", "card is on its way",
-        "has been mailed", "available credit", "refinance", "purchase a car", "mortgage")
+        "has been mailed", "available credit", "refinance", "purchase a car", "mortgage",
+        "snapshot", "received your payment", "terms", "feedback", "fico", "scam", "plan it",
+        "referral", "refer a friend", "membership", "additional card", "paperless", "paze")
+CARD_WORDS = r"discover|american express|amex|chase (?:freedom|sapphire|card|credit)|credit card"
 
 
 def _num(s):
@@ -41,6 +49,10 @@ def _clean(name):
 
 def _bank_of(sender, text):
     s = (sender or "").lower()
+    if "discover" in s:
+        return "discover"
+    if "americanexpress" in s or "aexp" in s:
+        return "amex"
     if "chase" in s:
         return "chase"
     if "wellsfargo" in s or "wells fargo" in s:
@@ -65,9 +77,21 @@ def parse_bank(sender, subject, body, my_names=("rut patel",)):
     bank = _bank_of(sender, text)
     if not bank:
         return "skip", None
-    if sender and "alert" not in sender.lower():
-        return "skip", None          # marketing mail (chase@mcmap..., mail1.wellsfargo...)
+    sl = (sender or "").lower()
+    if sender and not (("alert" in sl) or "services.discover.com" in sl
+                       or "welcome.americanexpress.com" in sl):
+        return "skip", None          # marketing mail (chase@mcmap..., member.americanexpress...)
     low = subject.lower()
+
+    # ---- Paying a credit card bill: never spending (it was counted at the swipe)
+    if re.search(r"payment", text, re.I) and re.search(CARD_WORDS, text, re.I) and \
+            not re.search(r"zelle", text, re.I):
+        if bank == "wells" and not re.search(r"scheduled|due|received your|statement", low):
+            amt = re.search(r"\bamount\b[^$\d]{0,10}" + MONEY, text, re.I) or re.search(MONEY, text)
+            if amt:
+                return "ok", {"bank": bank, "kind": "card_pay", "amount": _num(amt.group(1)),
+                              "who": "Card bill", "note": "Credit card bill (from Wells Fargo)"}
+        return "skip", None
     my_names = [n.strip().lower() for n in my_names if n and n.strip()]
 
     # ---- Zelle received: "NAME sent you money" + "Amount $171.18"

@@ -13,7 +13,17 @@
       </div>
       <input type="number" step="0.01" name="{{ a }}" inputmode="decimal" placeholder="{{ '%.2f'|format(bal[a]) }}">
     </div>
+    {% if a == 'Account 1' %}
+    <div class="chk chk-cc">
+      <div>
+        <div class="chk-name">Credit cards owed <small>Discover + Amex + Chase card</small></div>
+        <div class="chk-app">Current balance on all cards, added up</div>
+      </div>
+      <input type="number" step="0.01" name="cc_owed" inputmode="decimal" placeholder="0.00">
+    </div>
+    {% endif %}
   {% endfor %}
+  <p class="hint">Card purchases count as {{ labels['Account 1'] }} spending when you swipe, so the app takes what you owe on cards off {{ labels['Account 1'] }} for you.</p>
   <p class="hint">For {{ labels['Account 4'] }}, use the total balance on the Splitwise app (positive if friends owe you).</p>
   <button class="btn wide">Save check</button>
 </form>

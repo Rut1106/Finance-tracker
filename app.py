@@ -129,6 +129,8 @@ def email_day(d):
 
 def bank_account(bank):
     """Chase -> the account whose name has 'chase' (else Account 1); Wells -> 'wells' (else 3)."""
+    if bank in ("discover", "amex"):
+        return L.SPEND_ACC                    # credit cards count as Chase spending
     lab = L.labels(store)
     word = "chase" if bank == "chase" else "wells"
     for a in L.ACCOUNTS[:3]:
@@ -448,11 +450,13 @@ def check():
     bal = L.balances(store)
     if request.method == "POST":
         made = []
+        owed = L.f(request.form.get("cc_owed"))
         for a in L.ACCOUNTS:
             val = request.form.get(a, "").strip()
             if val == "":
                 continue
-            diff = round(L.f(val) - bal[a], 2)
+            real = L.f(val) - (owed if a == L.SPEND_ACC else 0)   # card spending already counted
+            diff = round(real - bal[a], 2)
             if abs(diff) >= 0.01:
                 row = make_row({"kind": "adjust", "amount": diff, "account": a,
                                 "category": "Untracked",
@@ -646,13 +650,14 @@ def api_email():
     d = _json_or_form()
     sender = str(d.get("from") or "").lower()
     body = str(d.get("body") or "")
-    if not any(w in sender for w in ("splitwise", "chase", "wellsfargo", "wells fargo")):
+    banks = ("chase", "wellsfargo", "wells fargo", "discover", "americanexpress", "aexp")
+    if not any(w in sender for w in ("splitwise",) + banks):
         fwd = re.search(r"From:\s*[^<\n]*<([^>\s]+)>", body)      # forwarded by hand
         if fwd:
             sender = fwd.group(1).lower()
     if "splitwise" in sender:
         return handle_splitwise(d)
-    if "chase" in sender or "wellsfargo" in sender or "wells fargo" in sender:
+    if any(w in sender for w in banks):
         return handle_bank(d, sender)
     if "splitwise" in (str(d.get("subject")) + body).lower():
         return handle_splitwise(d)
@@ -755,6 +760,17 @@ def handle_bank(d, sender):
             return link(twin)
         return add({"kind": "transfer", "account": src, "to_account": dst,
                     "note": "Zelle to myself"}, "ok")
+
+    if kind == "card_pay":                     # Wells Fargo paid a card bill -> money moved to Chase's side
+        src, dst = acc, L.SPEND_ACC
+        if src == dst:
+            return jsonify(ok=True, status="skipped")
+        twin = find_twin(day, amt, lambda r: r["kind"] == "transfer" and r["account"] == src
+                         and r["to_account"] == dst and not has_token(r, "bk"))
+        if twin:
+            return link(twin)
+        return add({"kind": "transfer", "account": src, "to_account": dst,
+                    "note": "Credit card bill"}, "ok")
 
     if kind == "zelle_in":
         twin = find_twin(day, amt, lambda r: r["kind"] == "transfer" and r["account"] == L.SPLIT_ACC

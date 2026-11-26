@@ -1,5 +1,5 @@
 /**
- * Rut Finance — email bridge v3 (Splitwise + Chase + Wells Fargo)
+ * Rut Finance — email bridge v3 (Splitwise + Chase + Wells Fargo + Discover + Amex)
  *
  * Runs inside the BOT Gmail account only. Every minute it sends new
  * Splitwise and bank alert emails to Rut Finance.
@@ -11,7 +11,7 @@
 const APP_URL = 'https://finance-tracker-ut8h.onrender.com/api/email';
 const API_KEY = 'PASTE_YOUR_API_KEY_HERE';
 
-const SEARCH = '(splitwise OR chase OR "wells fargo" OR wellsfargo) -label:rf-done newer_than:14d';
+const SEARCH = '(splitwise OR chase OR "wells fargo" OR wellsfargo OR discover OR americanexpress OR "american express") -label:rf-done newer_than:14d';
 
 function setup() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });

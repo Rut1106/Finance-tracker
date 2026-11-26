@@ -46,6 +46,25 @@ One small action per line. About 15 minutes total.
 4. Turn on **debit card purchase** alerts → lowest amount → **Email**.
 5. Turn on **Zelle** and **direct deposit** alerts → **Email**.
 
+**Chase credit card** (same Chase app)
+
+1. Open your **Freedom Unlimited** card → **Alerts**.
+2. Turn on **"Transaction over…"** → lowest amount → **Email**.
+
+**Discover app**
+
+1. Open the Discover app.
+2. Tap **Profile** → **Alerts**.
+3. Turn on **Transaction alert** (every purchase) → lowest amount → **Email**.
+
+**Amex app**
+
+1. Open the Amex app.
+2. Tap **Account** → **Notifications** (or "Manage alerts").
+3. Turn on **Large purchase** (or "Purchase") alert → set **$0** or the lowest amount → **Email**.
+
+Card bill payments are ignored on purpose: a card purchase already counted when you swiped.
+
 ---
 
 ## Part C — Forward bank alerts to the bot (laptop, 2 min)
@@ -55,13 +74,13 @@ Do this in your **real** Gmail (rutpatel.34@gmail.com) in a browser.
 1. Click the **sliders icon** at the right end of the Gmail search bar.
 2. In **From**, paste:
    ```
-   no.reply.alerts@chase.com OR noreplyalerts@chase.com OR alerts@notify.wellsfargo.com
+   no.reply.alerts@chase.com OR noreplyalerts@chase.com OR alerts@notify.wellsfargo.com OR discover@services.discover.com OR AmericanExpress@welcome.americanexpress.com
    ```
 3. Click **Create filter**.
 4. Tick **Forward it to:** → pick the bot address.
 5. Click **Create filter**.
 
-Only these three alert senders are forwarded. Statements, offers and everything else stay in your inbox only.
+Only these alert senders are forwarded. Offers and marketing (they come from other addresses) stay in your inbox only.
 
 ---
 
@@ -78,6 +97,12 @@ Only these three alert senders are forwarded. Statements, offers and everything 
 9. If it asks for permission: **Review permissions** → bot account → **Advanced** → **Go to Rut Finance bridge** → **Allow**.
 
 It now checks every **1 minute** instead of 15.
+
+---
+
+## Weekly balance check (new box)
+
+On **Check**, under Chase there's a new box **Credit cards owed**. Type the total you owe on Discover + Amex + Chase card. The app subtracts it from Chase for you.
 
 ---
 
@@ -129,6 +154,9 @@ Test it: open the automation and tap **▶** (bottom right). You should see some
 | Zelle from a friend + Splitwise "paid you" | One settle-up, not income |
 | Zelle to / from a friend, no Splitwise email | Inbox, with a button **"It was a Splitwise settle-up"** |
 | Direct deposit | Income in the Inbox |
+| Discover / Amex / Chase card purchase | Expense from Chase (Account 1), matched with Apple Pay |
+| Card bill paid from Chase | Ignored (already counted at the swipe) |
+| Card bill paid from Wells Fargo | Transfer Wells Fargo → Chase |
 | Offers, statements, security emails | Ignored |
 
 If a bank email can't be read, Home shows "Couldn't read a bank email". Send me the subject and I'll teach it.

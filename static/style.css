@@ -325,3 +325,4 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 
 .sts.over .sts-bar i { background: var(--red); }
 .ibx-settle { margin-top: 6px; }
 .sts + .stats, .nudge.good + .stats { margin-top: 0; }
+.chk-cc { padding-left: 14px; border-left: 3px solid var(--gold-l); }
